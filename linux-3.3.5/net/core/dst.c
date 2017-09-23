@@ -248,7 +248,7 @@ again:
 
 	dst = child;
 	if (dst) {
-		int nohash = dst->flags & DST_NOHASH;
+		int nohash = dst->flags & (DST_NOHASH | DST_NOCACHE);
 
 		if (atomic_dec_and_test(&dst->__refcnt)) {
 			/* We were real parent of this dst, so kill child. */

@@ -33,6 +33,7 @@
 #include <linux/skbuff.h>
 #include <linux/in.h>
 #include <linux/slab.h>
+#include <linux/if_vlan.h>
 #include <net/arp.h>
 #include <net/route.h>
 #include <net/sock.h>
@@ -159,7 +160,8 @@ static int netvsc_start_xmit(struct sk_buff *skb, struct net_device *net)
 	/* Allocate a netvsc packet based on # of frags. */
 	packet = kzalloc(sizeof(struct hv_netvsc_packet) +
 			 (num_pages * sizeof(struct hv_page_buffer)) +
-			 sizeof(struct rndis_filter_packet), GFP_ATOMIC);
+			 sizeof(struct rndis_filter_packet) +
+			 NDIS_VLAN_PPI_SIZE, GFP_ATOMIC);
 	if (!packet) {
 		/* out of memory, drop packet */
 		netdev_err(net, "unable to allocate hv_netvsc_packet\n");
@@ -172,6 +174,8 @@ static int netvsc_start_xmit(struct sk_buff *skb, struct net_device *net)
 	packet->extension = (void *)(unsigned long)packet +
 				sizeof(struct hv_netvsc_packet) +
 				    (num_pages * sizeof(struct hv_page_buffer));
+
+	packet->vlan_tci = skb->vlan_tci;
 
 	/* If the rndis msg goes beyond 1 page, we will add 1 later */
 	packet->page_buf_cnt = num_pages - 1;
@@ -242,7 +246,7 @@ void netvsc_linkstatus_callback(struct hv_device *device_obj,
 	net_device = hv_get_drvdata(device_obj);
 	net = net_device->ndev;
 
-	if (!net) {
+	if (!net || net->reg_state != NETREG_REGISTERED) {
 		netdev_err(net, "got link status but net device "
 				"not initialized yet\n");
 		return;
@@ -296,6 +300,9 @@ int netvsc_recv_callback(struct hv_device *device_obj,
 
 	skb->protocol = eth_type_trans(skb, net);
 	skb->ip_summed = CHECKSUM_NONE;
+
+	if (packet->vlan_tci & VLAN_TAG_PRESENT)
+		__vlan_hwaccel_put_tag(skb, packet->vlan_tci);
 
 	net->stats.rx_packets++;
 	net->stats.rx_bytes += packet->total_data_buflen;
@@ -410,10 +417,21 @@ static int netvsc_probe(struct hv_device *dev,
 
 	/* TODO: Add GSO and Checksum offload */
 	net->hw_features = NETIF_F_SG;
-	net->features = NETIF_F_SG;
+	net->features = NETIF_F_SG | NETIF_F_HW_VLAN_TX;
 
 	SET_ETHTOOL_OPS(net, &ethtool_ops);
 	SET_NETDEV_DEV(net, &dev->device);
+
+	/* Notify the netvsc driver of the new device */
+	device_info.ring_size = ring_size;
+	ret = rndis_filter_device_add(dev, &device_info);
+	if (ret != 0) {
+		netdev_err(net, "unable to add netvsc device (ret %d)\n", ret);
+		free_netdev(net);
+		hv_set_drvdata(dev, NULL);
+		return ret;
+	}
+	memcpy(net->dev_addr, device_info.mac_adr, ETH_ALEN);
 
 	ret = register_netdev(net);
 	if (ret != 0) {
@@ -421,18 +439,6 @@ static int netvsc_probe(struct hv_device *dev,
 		free_netdev(net);
 		goto out;
 	}
-
-	/* Notify the netvsc driver of the new device */
-	device_info.ring_size = ring_size;
-	ret = rndis_filter_device_add(dev, &device_info);
-	if (ret != 0) {
-		netdev_err(net, "unable to add netvsc device (ret %d)\n", ret);
-		unregister_netdev(net);
-		free_netdev(net);
-		hv_set_drvdata(dev, NULL);
-		return ret;
-	}
-	memcpy(net->dev_addr, device_info.mac_adr, ETH_ALEN);
 
 	netif_carrier_on(net);
 

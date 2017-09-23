@@ -1,162 +1,81 @@
-if ARCH_MSM
 
 choice
 	prompt "Qualcomm MSM SoC Type"
-	default ARCH_MSM7X00A
 
-config ARCH_MSM7X00A
-	bool "MSM7x00A / MSM7x01A"
-	select MACH_TROUT if !MACH_HALIBUT
-	select ARCH_MSM_ARM11
-	select MSM_SMD
-	select MSM_SMD_PKG3
-	select CPU_V6
-	select GPIO_MSM_V1
-	select MSM_PROC_COMM
-
-config ARCH_MSM7X30
-	bool "MSM7x30"
-	select MACH_MSM7X30_SURF # if !
-	select ARCH_MSM_SCORPION
-	select MSM_SMD
-	select MSM_VIC
-	select CPU_V7
-	select MSM_GPIOMUX
-	select GPIO_MSM_V1
-	select MSM_PROC_COMM
-
-config ARCH_QSD8X50
-	bool "QSD8X50"
-	select MACH_QSD8X50_SURF if !MACH_QSD8X50A_ST1_5
-	select ARCH_MSM_SCORPION
-	select MSM_SMD
-	select MSM_VIC
-	select CPU_V7
-	select MSM_GPIOMUX
-	select GPIO_MSM_V1
-	select MSM_PROC_COMM
-
-config ARCH_MSM8X60
-	bool "MSM8X60"
-	select MACH_MSM8X60_SURF if (!MACH_MSM8X60_RUMI3 && !MACH_MSM8X60_SIM \
-				  && !MACH_MSM8X60_FFA)
-	select ARCH_MSM_SCORPIONMP
+config ARCH_IPQ806X
+	bool "IPQ806X"
+	select MSM_SMP
+	select MSM_BUS_SCALING
+	select ARCH_MSM_KRAIT
+	select HAVE_SCHED_CLOCK
+	select MACH_IPQ806X_RB3011
+	select LEDS_GPIO_REGISTER
+	select HAVE_CLK_PREPARE
+	select SWP_EMULATE
 	select ARM_GIC
 	select CPU_V7
-	select MSM_V2_TLMM
-	select GPIO_MSM_V2
-	select MSM_GPIOMUX
-	select MSM_SCM if SMP
-
-config ARCH_MSM8960
-	bool "MSM8960"
-	select ARCH_MSM_SCORPIONMP
-	select MACH_MSM8960_SIM if (!MACH_MSM8960_RUMI3)
-	select ARM_GIC
-	select CPU_V7
+	select PM
+	select PCI
+	select PCI_MSI
+        select ARCH_SUPPORTS_MSI
+	select MSM_PCIE
+	select MSM_ADM3
 	select MSM_V2_TLMM
 	select MSM_GPIOMUX
+	select MSM_RPM
+	select USB_EHCI_MSM
 	select MSM_SCM if SMP
+	select HAVE_SMP
+	select SMP
+	select QCOM_SCM
 
 endchoice
 
-config MSM_HAS_DEBUG_UART_HS
-	bool
-
-config MSM_SOC_REV_A
-	bool
-config  ARCH_MSM_SCORPIONMP
-	bool
-	select HAVE_SMP
-
-config  ARCH_MSM_ARM11
-	bool
-config  ARCH_MSM_SCORPION
-	bool
-
-config  MSM_VIC
-	bool
+if ARCH_MSM
 
 menu "Qualcomm MSM Board Type"
 
-config MACH_HALIBUT
-	depends on ARCH_MSM
-	depends on ARCH_MSM7X00A
-	bool "Halibut Board (QCT SURF7201A)"
+config MACH_IPQ806X_RB3011
+	depends on ARCH_IPQ806X
+	bool "IPQ806X RB3011"
 	help
-	  Support for the Qualcomm SURF7201A eval board.
+	  Support for the Mikrotik IPQ806X RB3011 device.
 
-config MACH_TROUT
-	depends on ARCH_MSM
-	depends on ARCH_MSM7X00A
-	bool "HTC Dream (aka trout)"
+config MSM_PCIE
+	bool "MSM PCIe Controller driver"
+	depends on PCI && PCI_MSI
 	help
-	  Support for the HTC Dream, T-Mobile G1, Android ADP1 devices.
+	  Enables the PCIe functionality by configures PCIe core on
+	  MSM chipset and by enabling the ARM PCI framework extension.
 
-config MACH_MSM7X30_SURF
-	depends on ARCH_MSM7X30
-	bool "MSM7x30 SURF"
-	help
-	  Support for the Qualcomm MSM7x30 SURF eval board.
+config MSM_RPM
+	bool "Resource Power Manager"
+	select MSM_MPM
 
-config MACH_QSD8X50_SURF
-	depends on ARCH_QSD8X50
-	bool "QSD8x50 SURF"
-	help
-	  Support for the Qualcomm QSD8x50 SURF eval board.
+config MSM_BUS_SCALING
+	bool "Bus scaling driver"
+	default n
 
-config MACH_QSD8X50A_ST1_5
-	depends on ARCH_QSD8X50
-	select MSM_SOC_REV_A
-	bool "QSD8x50A ST1.5"
+config MSM_NUM_PCIE
+	int "Number of PCIe Root Complex"
+	default 0 if !MSM_PCIE
+	default 3 if ARCH_IPQ806X
+	default 1
+	range 0 3
 	help
-	  Support for the Qualcomm ST1.5.
+	  Max. number of PCIe RCs available in the SoC
 
-config MACH_MSM8X60_RUMI3
-	depends on ARCH_MSM8X60
-	bool "MSM8x60 RUMI3"
+config CPU_FREQ_MSM
+        bool
+        depends on CPU_FREQ && ARCH_MSM
+        default y
 	help
-	  Support for the Qualcomm MSM8x60 RUMI3 emulator.
-
-config MACH_MSM8X60_SURF
-	depends on ARCH_MSM8X60
-	bool "MSM8x60 SURF"
-	help
-	  Support for the Qualcomm MSM8x60 SURF eval board.
-
-config MACH_MSM8X60_SIM
-	depends on ARCH_MSM8X60
-	bool "MSM8x60 Simulator"
-	help
-	  Support for the Qualcomm MSM8x60 simulator.
-
-config MACH_MSM8X60_FFA
-	depends on ARCH_MSM8X60
-	bool "MSM8x60 FFA"
-	help
-	  Support for the Qualcomm MSM8x60 FFA eval board.
-
-config MACH_MSM8960_SIM
-	depends on ARCH_MSM8960
-	bool "MSM8960 Simulator"
-	help
-	  Support for the Qualcomm MSM8960 simulator.
-
-config MACH_MSM8960_RUMI3
-	depends on ARCH_MSM8960
-	bool "MSM8960 RUMI3"
-	help
-	  Support for the Qualcomm MSM8960 RUMI3 emulator.
+          This enables the CPUFreq driver for Qualcomm CPUs.
+          If in doubt, say Y.
 
 endmenu
 
-config MSM_SMD_PKG3
-	bool
-
-config MSM_PROC_COMM
-	bool
-
-config MSM_SMD
+config MSM_MPM
 	bool
 
 config MSM_GPIOMUX
@@ -165,6 +84,16 @@ config MSM_GPIOMUX
 config MSM_V2_TLMM
 	bool
 
+config MSM_ADM3
+	bool
+
 config MSM_SCM
 	bool
+
+config ARCH_MSM_KRAIT
+	bool
+
+config MSM_SMP
+	bool
+
 endif

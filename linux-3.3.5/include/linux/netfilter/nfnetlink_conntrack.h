@@ -36,6 +36,7 @@ enum ctattr_type {
 	CTA_USE,
 	CTA_ID,
 	CTA_NAT_DST,
+	CTA_P2P,
 	CTA_TUPLE_MASTER,
 	CTA_NAT_SEQ_ADJ_ORIG,
 	CTA_NAT_SEQ_ADJ_REPLY,
@@ -122,6 +123,9 @@ enum ctattr_counters {
 	CTA_COUNTERS_UNSPEC,
 	CTA_COUNTERS_PACKETS,		/* 64bit counters */
 	CTA_COUNTERS_BYTES,		/* 64bit counters */
+	CTA_COUNTERS_FP_PACKETS,	/* 64bit counters */
+	CTA_COUNTERS_FP_BYTES,		/* 64bit counters */
+	CTA_COUNTERS_RATE,
 	CTA_COUNTERS32_PACKETS,		/* old 32bit counters, unused */
 	CTA_COUNTERS32_BYTES,		/* old 32bit counters, unused */
 	__CTA_COUNTERS_MAX

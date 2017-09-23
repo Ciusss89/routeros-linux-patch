@@ -168,15 +168,16 @@ static void tile_irq_chip_enable(struct irq_data *d)
  */
 static void tile_irq_chip_disable(struct irq_data *d)
 {
-	get_cpu_var(irq_disable_mask) |= (1UL << d->irq);
-	mask_irqs(1UL << d->irq);
-	put_cpu_var(irq_disable_mask);
+// XXX: comment out masking interrupts, since masking on just one core is bogus anyway
+//	get_cpu_var(irq_disable_mask) |= (1UL << d->irq);
+//	mask_irqs(1UL << d->irq);
+//	put_cpu_var(irq_disable_mask);
 }
 
 /* Mask an interrupt. */
 static void tile_irq_chip_mask(struct irq_data *d)
 {
-	mask_irqs(1UL << d->irq);
+//	mask_irqs(1UL << d->irq);
 }
 
 /* Unmask an interrupt. */
@@ -255,7 +256,10 @@ EXPORT_SYMBOL(tile_irq_activate);
 
 void ack_bad_irq(unsigned int irq)
 {
-	pr_err("unexpected IRQ trap at vector %02x\n", irq);
+	__get_cpu_var(irq_disable_mask) |= 1UL << irq;
+	mask_irqs(1UL << irq);
+	pr_err("unexpected IRQ trap at vector %02x cpu:%u mask:%llx\n",
+	       irq, smp_processor_id(), __insn_mfspr(SPR_IPI_MASK_K));
 }
 
 /*

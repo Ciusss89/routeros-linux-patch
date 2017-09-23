@@ -624,6 +624,13 @@ static void r4k_dma_cache_wback_inv(unsigned long addr, unsigned long size)
 	__sync();
 }
 
+void r4k_dma_cache_wback_inv_fast(unsigned long addr, unsigned long size)
+{
+	blast_dcache_range(addr, addr + size);
+	bc_wback_inv(addr, size);
+}
+EXPORT_SYMBOL(r4k_dma_cache_wback_inv_fast);
+
 static void r4k_dma_cache_inv(unsigned long addr, unsigned long size)
 {
 	/* Catch bad driver code */
@@ -1006,7 +1013,9 @@ static void __cpuinit probe_pcache(void)
 		              c->dcache.linesz;
 		c->dcache.waybit = __ffs(dcache_size/c->dcache.ways);
 
+#ifdef CONFIG_CPU_HAS_PREFETCH
 		c->options |= MIPS_CPU_PREFETCH;
+#endif
 		break;
 	}
 

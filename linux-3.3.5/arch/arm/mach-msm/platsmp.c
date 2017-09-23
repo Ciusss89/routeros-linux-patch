@@ -1,19 +1,19 @@
+/* * Copyright (c) 2012 Qualcomm Atheros, Inc. * */
 /*
  *  Copyright (C) 2002 ARM Ltd.
  *  All Rights Reserved
- *  Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ *  Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
+#include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/errno.h>
+#include <linux/cpumask.h>
 #include <linux/delay.h>
-#include <linux/device.h>
-#include <linux/jiffies.h>
-#include <linux/smp.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
 
 #include <asm/hardware/gic.h>
@@ -22,36 +22,47 @@
 #include <asm/mach-types.h>
 #include <asm/smp_plat.h>
 
+#include <mach/socinfo.h>
 #include <mach/msm_iomap.h>
+#include <soc/qcom/scm.h>
 
-#include "scm-boot.h"
+#define SCM_BOOT_ADDR				0x1
+#define SCM_FLAG_COLDBOOT_CPU1		0x01
+#define SCM_FLAG_COLDBOOT_CPU2		0x08
+#define SCM_FLAG_COLDBOOT_CPU3		0x20
+
+#include "pm.h"
 
 #define VDD_SC1_ARRAY_CLAMP_GFS_CTL 0x15A0
 #define SCSS_CPU1CORE_RESET 0xD80
 #define SCSS_DBG_STATUS_CORE_PWRDUP 0xE64
 
-/* Mask for edge trigger PPIs except AVS_SVICINT and AVS_SVICINTSWDONE */
-#define GIC_PPI_EDGE_MASK 0xFFFFD7FF
-
 extern void msm_secondary_startup(void);
+
 /*
  * control for which core is the next to come out of the secondary
  * boot "holding pen".
  */
 volatile int pen_release = -1;
 
-static DEFINE_SPINLOCK(boot_lock);
-
-static inline int get_core_count(void)
+/*
+ * Write pen_release in a way that is guaranteed to be visible to all
+ * observers, irrespective of whether they're taking part in coherency
+ * or not.  This is necessary for the hotplug code to work reliably.
+ */
+static void __cpuinit write_pen_release(int val)
 {
-	/* 1 + the PART[1:0] field of MIDR */
-	return ((read_cpuid_id() >> 4) & 3) + 1;
+	pen_release = val;
+	smp_wmb();
+	__cpuc_flush_dcache_area((void *)&pen_release, sizeof(pen_release));
+	outer_clean_range(__pa(&pen_release), __pa(&pen_release + 1));
 }
+
+static DEFINE_SPINLOCK(boot_lock);
 
 void __cpuinit platform_secondary_init(unsigned int cpu)
 {
-	/* Configure edge-triggered PPIs */
-	writel(GIC_PPI_EDGE_MASK, MSM_QGIC_DIST_BASE + GIC_DIST_CONFIG + 4);
+	WARN_ON(msm_platform_secondary_init(cpu));
 
 	/*
 	 * if any interrupts are already enabled for the primary
@@ -64,8 +75,7 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	 * let the primary processor know we're out of the
 	 * pen, then head off into the C entry point
 	 */
-	pen_release = -1;
-	smp_wmb();
+	write_pen_release(-1);
 
 	/*
 	 * Synchronise with the boot thread.
@@ -74,34 +84,88 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	spin_unlock(&boot_lock);
 }
 
-static __cpuinit void prepare_cold_cpu(unsigned int cpu)
+static int __cpuinit krait_release_secondary(unsigned long base, int cpu)
 {
-	int ret;
-	ret = scm_set_boot_addr(virt_to_phys(msm_secondary_startup),
-				SCM_FLAG_COLDBOOT_CPU1);
-	if (ret == 0) {
-		void __iomem *sc1_base_ptr;
-		sc1_base_ptr = ioremap_nocache(0x00902000, SZ_4K*2);
-		if (sc1_base_ptr) {
-			writel(0, sc1_base_ptr + VDD_SC1_ARRAY_CLAMP_GFS_CTL);
-			writel(0, sc1_base_ptr + SCSS_CPU1CORE_RESET);
-			writel(3, sc1_base_ptr + SCSS_DBG_STATUS_CORE_PWRDUP);
-			iounmap(sc1_base_ptr);
-		}
-	} else
-		printk(KERN_DEBUG "Failed to set secondary core boot "
-				  "address\n");
+	void *base_ptr = ioremap_nocache(base + (cpu * 0x10000), SZ_4K);
+	if (!base_ptr)
+		return -ENODEV;
+
+	writel_relaxed(0x109, base_ptr+0x04);
+	writel_relaxed(0x101, base_ptr+0x04);
+	mb();
+	ndelay(300);
+
+	writel_relaxed(0x121, base_ptr+0x04);
+	mb();
+	udelay(2);
+
+	writel_relaxed(0x120, base_ptr+0x04);
+	mb();
+	udelay(2);
+
+	writel_relaxed(0x100, base_ptr+0x04);
+	mb();
+	udelay(100);
+
+	writel_relaxed(0x180, base_ptr+0x04);
+	mb();
+	iounmap(base_ptr);
+	return 0;
+}
+
+static int __cpuinit release_secondary(unsigned int cpu)
+{
+	BUG_ON(cpu >= get_core_count());
+
+	return krait_release_secondary(0x02088000, cpu);
+}
+
+DEFINE_PER_CPU(int, cold_boot_done);
+static int cold_boot_flags[] = {
+	0,
+	SCM_FLAG_COLDBOOT_CPU1,
+	SCM_FLAG_COLDBOOT_CPU2,
+	SCM_FLAG_COLDBOOT_CPU3,
+};
+
+static int scm_set_boot_addr(phys_addr_t addr, int flags)
+{
+	struct {
+		unsigned int flags;
+		phys_addr_t  addr;
+	} cmd;
+
+	cmd.addr = addr;
+	cmd.flags = flags;
+	return scm_call(SCM_SVC_BOOT, SCM_BOOT_ADDR,
+			&cmd, sizeof(cmd), NULL, 0);
 }
 
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
+	int ret;
+	unsigned int flag = 0;
 	unsigned long timeout;
-	static int cold_boot_done;
 
-	/* Only need to bring cpu out of reset this way once */
-	if (cold_boot_done == false) {
-		prepare_cold_cpu(cpu);
-		cold_boot_done = true;
+	pr_debug("Starting secondary CPU %d\n", cpu);
+
+	/* Set preset_lpj to avoid subsequent lpj recalculations */
+	preset_lpj = loops_per_jiffy;
+
+	if (cpu > 0 && cpu < ARRAY_SIZE(cold_boot_flags))
+		flag = cold_boot_flags[cpu];
+	else
+		__WARN();
+
+	if (per_cpu(cold_boot_done, cpu) == false) {
+		ret = scm_set_boot_addr(virt_to_phys(msm_secondary_startup),
+					flag);
+		if (ret == 0)
+			release_secondary(cpu);
+		else
+			printk(KERN_DEBUG "Failed to set secondary core boot "
+					  "address\n");
+		per_cpu(cold_boot_done, cpu) = true;
 	}
 
 	/*
@@ -118,9 +182,7 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	 * Note that "pen_release" is the hardware CPU ID, whereas
 	 * "cpu" is Linux's internal ID.
 	 */
-	pen_release = cpu_logical_map(cpu);
-	__cpuc_flush_dcache_area((void *)&pen_release, sizeof(pen_release));
-	outer_clean_range(__pa(&pen_release), __pa(&pen_release + 1));
+	write_pen_release(cpu_logical_map(cpu));
 
 	/*
 	 * Send the secondary CPU a soft interrupt, thereby causing
@@ -147,11 +209,26 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 	return pen_release != -1 ? -ENOSYS : 0;
 }
 
+const int get_core_count(void)
+{
+	if (!(read_cpuid_mpidr() & BIT(31)))
+		return 1;
+
+	if (read_cpuid_mpidr() & BIT(30))
+		return 1;
+
+	/* 1 + the PART[1:0] field of MIDR */
+	return ((read_cpuid_id() >> 4) & 3) + 1;
+}
+
+const int read_msm_cpu_type(void)
+{
+	return MSM_CPU_IPQ8064;
+}
+
 /*
  * Initialise the CPU possible map early - this describes the CPUs
- * which may be present or become present in the system. The msm8x60
- * does not support the ARM SCU, so just set the possible cpu mask to
- * NR_CPUS.
+ * which may be present or become present in the system.
  */
 void __init smp_init_cpus(void)
 {

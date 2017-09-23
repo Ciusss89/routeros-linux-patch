@@ -1,0 +1,90 @@
+
+config ARCH_IPQ806X
+	bool "IPQ806X support"
+	select ARCH_MSM
+	select HAVE_CLK
+	select GENERIC_CLOCKEVENTS
+	select ARCH_REQUIRE_GPIOLIB
+	select ARCH_HAS_CPUFREQ
+	select CLKDEV_LOOKUP
+	select MSM_SMP
+	select MSM_BUS_SCALING
+	select ARCH_MSM_KRAIT
+	select HAVE_SCHED_CLOCK
+	select MACH_IPQ806X_RB3011
+	select LEDS_GPIO_REGISTER
+	select HAVE_CLK_PREPARE
+	select SWP_EMULATE
+	select ARM_GIC
+	select CPU_V7
+	select PM
+	select PCI
+	select PCI_MSI
+        select ARCH_SUPPORTS_MSI
+	select MSM_PCIE
+	select MSM_ADM3
+	select MSM_V2_TLMM
+	select MSM_GPIOMUX
+	select MSM_RPM
+	select USB_EHCI_MSM
+	select MSM_SCM if SMP
+	select QCOM_SCM if SMP
+	select HAVE_SMP
+	select SMP
+	help
+	  Support for Qualcomm's ipq806x.
+
+if ARCH_IPQ806X
+
+menu "IPQ806X Options"
+
+config MSM_PCIE
+	bool "MSM PCIe Controller driver"
+	depends on PCI && PCI_MSI
+	help
+	  Enables the PCIe functionality by configures PCIe core on
+	  MSM chipset and by enabling the ARM PCI framework extension.
+
+config MSM_RPM
+	bool "Resource Power Manager"
+	select MSM_MPM
+
+config MSM_BUS_SCALING
+	bool "Bus scaling driver"
+	default n
+
+config CPU_FREQ_MSM
+        bool
+        depends on CPU_FREQ && ARCH_MSM
+        default y
+        help
+          This enables the CPUFreq driver for Qualcomm CPUs.
+          If in doubt, say Y.
+
+endmenu
+
+config MSM_MPM
+	bool
+
+config MSM_GPIOMUX
+	bool
+
+config MSM_V2_TLMM
+	bool
+
+config MSM_ADM3
+	bool
+
+config MSM_SCM
+	bool
+
+config ARCH_MSM
+	bool
+
+config ARCH_MSM_KRAIT
+	bool
+
+config MSM_SMP
+	bool
+
+endif

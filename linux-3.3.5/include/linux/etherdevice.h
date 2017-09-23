@@ -166,7 +166,9 @@ static inline unsigned compare_ether_addr(const u8 *addr1, const u8 *addr2)
 	const u16 *b = (const u16 *) addr2;
 
 	BUILD_BUG_ON(ETH_ALEN != 6);
-	return ((a[0] ^ b[0]) | (a[1] ^ b[1]) | (a[2] ^ b[2])) != 0;
+
+	return ((get_unaligned((u32 *) addr1) ^ get_unaligned((u32 *) addr2))
+		| (get_unaligned(&a[2]) ^ get_unaligned(&b[2]))) != 0;
 }
 
 static inline unsigned long zap_last_2bytes(unsigned long value)

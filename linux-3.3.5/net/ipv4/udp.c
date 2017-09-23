@@ -1470,6 +1470,9 @@ int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 		goto drop;
 
 
+	if (sk->sk_lockless_rcv && sk->sk_lockless_rcv(sk, skb) == 0)
+		return 0;
+
 	if (sk_rcvqueues_full(sk, skb))
 		goto drop;
 

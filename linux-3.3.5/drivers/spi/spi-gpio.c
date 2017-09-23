@@ -22,6 +22,7 @@
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
+#include <linux/delay.h>
 
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
@@ -126,7 +127,9 @@ static inline int getmiso(const struct spi_device *spi)
  * reaching even one Mbit/sec (except when we can inline bitops), so for now
  * we'll just assume we never need additional per-bit slowdowns.
  */
-#define spidelay(nsecs)	do {} while (0)
+#ifndef spidelay
+#define spidelay(nsecs)	ndelay(nsecs)
+#endif
 
 #include "spi-bitbang-txrx.h"
 
@@ -375,6 +378,12 @@ gpio_free:
 			gpio_free(SPI_MOSI_GPIO);
 		gpio_free(SPI_SCK_GPIO);
 		spi_master_put(master);
+	}
+	else {
+#ifdef CONFIG_TILE
+	    extern void init_ccr_spi(struct spi_master *master);	    
+	    init_ccr_spi(master);
+#endif
 	}
 
 	return status;
