@@ -32,7 +32,6 @@
 #include <asm/byteorder.h>
 #include <asm/system.h>
 #include <asm/uaccess.h>
-#include <asm/unaligned.h>
 
 int net_msg_warn __read_mostly = 1;
 EXPORT_SYMBOL(net_msg_warn);
@@ -288,18 +287,14 @@ void inet_proto_csum_replace4(__sum16 *sum, struct sk_buff *skb,
 {
 	__be32 diff[] = { ~from, to };
 	if (skb->ip_summed != CHECKSUM_PARTIAL) {
-		put_unaligned(
-		    csum_fold(csum_partial(diff, sizeof(diff),
-					   ~csum_unfold(get_unaligned(sum)))),
-		    sum);
+		*sum = csum_fold(csum_partial(diff, sizeof(diff),
+				~csum_unfold(*sum)));
 		if (skb->ip_summed == CHECKSUM_COMPLETE && pseudohdr)
 			skb->csum = ~csum_partial(diff, sizeof(diff),
 						~skb->csum);
 	} else if (pseudohdr)
-	    put_unaligned(
-		~csum_fold(csum_partial(diff, sizeof(diff),
-					csum_unfold(get_unaligned(sum)))),
-		sum);
+		*sum = ~csum_fold(csum_partial(diff, sizeof(diff),
+				csum_unfold(*sum)));
 }
 EXPORT_SYMBOL(inet_proto_csum_replace4);
 

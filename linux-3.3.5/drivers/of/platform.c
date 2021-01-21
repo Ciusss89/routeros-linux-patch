@@ -462,5 +462,4 @@ int of_platform_populate(struct device_node *root,
 	of_node_put(root);
 	return rc;
 }
-EXPORT_SYMBOL(of_platform_populate);
 #endif /* !CONFIG_SPARC */

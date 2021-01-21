@@ -62,7 +62,7 @@ ttl_tg(struct sk_buff *skb, const struct xt_action_param *par)
 		iph->ttl = new_ttl;
 	}
 
-	return info->passthrough ? XT_CONTINUE : NF_ACCEPT;
+	return XT_CONTINUE;
 }
 
 static unsigned int
@@ -98,7 +98,7 @@ hl_tg6(struct sk_buff *skb, const struct xt_action_param *par)
 
 	ip6h->hop_limit = new_hl;
 
-	return info->passthrough ? XT_CONTINUE : NF_ACCEPT;
+	return XT_CONTINUE;
 }
 
 static int ttl_tg_check(const struct xt_tgchk_param *par)

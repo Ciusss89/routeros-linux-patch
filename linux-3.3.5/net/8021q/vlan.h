@@ -63,7 +63,6 @@ struct vlan_dev_priv {
 	struct vlan_priority_tci_mapping	*egress_priority_map[16];
 
 	u16					vlan_id;
-	unsigned short				vlan_proto;
 	u16					flags;
 
 	struct net_device			*real_dev;
@@ -123,19 +122,11 @@ static inline void vlan_group_set_device(struct vlan_group *vg,
 	array[vlan_id % VLAN_GROUP_ARRAY_PART_LEN] = dev;
 }
 
-static inline struct vlan_info *vlan_get_info(struct net_device *real_dev,
-						unsigned short proto)
-{
-	return  proto == ETH_P_8021Q ? rcu_dereference_rtnl(real_dev->vlan_info)
-            : rcu_dereference_rtnl(real_dev->vlan_info_alt);
-}
-
 /* Must be invoked with rcu_read_lock or with RTNL. */
 static inline struct net_device *vlan_find_dev(struct net_device *real_dev,
-					       u16 vlan_id,
-					       unsigned short proto)
+					       u16 vlan_id)
 {
-	struct vlan_info *vlan_info = vlan_get_info(real_dev, proto);
+	struct vlan_info *vlan_info = rcu_dereference_rtnl(real_dev->vlan_info);
 
 	if (vlan_info)
 		return vlan_group_get_device(&vlan_info->grp, vlan_id);
@@ -151,8 +142,7 @@ int vlan_dev_set_egress_priority(const struct net_device *dev,
 int vlan_dev_change_flags(const struct net_device *dev, u32 flag, u32 mask);
 void vlan_dev_get_realdev_name(const struct net_device *dev, char *result);
 
-int vlan_check_real_dev(struct net_device *real_dev, u16 vlan_id,
-		        unsigned short vlan_proto);
+int vlan_check_real_dev(struct net_device *real_dev, u16 vlan_id);
 void vlan_setup(struct net_device *dev);
 int register_vlan_dev(struct net_device *dev);
 void unregister_vlan_dev(struct net_device *dev, struct list_head *head);

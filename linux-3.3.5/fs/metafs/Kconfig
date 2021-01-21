@@ -1,3 +1,0 @@
-config META_FS
-	depends on METAROUTER || MIPS_MIKROTIK
-	tristate "MetaFS on Mikrotik MetaRouters"

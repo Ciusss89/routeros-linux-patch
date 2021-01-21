@@ -597,6 +597,7 @@ static int unlink_urbs (struct usbnet *dev, struct sk_buff_head *q)
 		 * handler(include defer_bh).
 		 */
 		usb_get_urb(urb);
+		spin_unlock_irqrestore(&q->lock, flags);
 		// during some PM-driven resume scenarios,
 		// these (async) unlinks complete immediately
 		retval = usb_unlink_urb (urb);
@@ -605,6 +606,7 @@ static int unlink_urbs (struct usbnet *dev, struct sk_buff_head *q)
 		else
 			count++;
 		usb_put_urb(urb);
+		spin_lock_irqsave(&q->lock, flags);
 	}
 	spin_unlock_irqrestore (&q->lock, flags);
 	return count;
@@ -1408,8 +1410,7 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 			strcpy(net->name, "wlan%d");
 		/* WWAN devices should always be named "wwan%d" */
 		if ((dev->driver_info->flags & FLAG_WWAN) != 0)
-                    // XXX - needed for ROS to distinguish modem from ether
-			strcpy(net->name, "lte%d");
+			strcpy(net->name, "wwan%d");
 
 		/* maybe the remote can't receive an Ethernet MTU */
 		if (net->mtu > (dev->hard_mtu - net->hard_header_len))

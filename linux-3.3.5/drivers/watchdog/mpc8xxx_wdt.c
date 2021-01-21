@@ -29,15 +29,6 @@
 #include <linux/uaccess.h>
 #include <sysdev/fsl_soc.h>
 
-#define RESET_CAUSE_IOCTL _IO('R', 1)
-
-#define RESET_COLD	0
-#define RESET_WARM	1
-#define RESET_WATCHDOG	2
-
-static unsigned __iomem *rsr = NULL;
-#define RSR_WDT_RESET 0x8
-
 struct mpc8xxx_wdt {
 	__be32 res0;
 	__be32 swcrr; /* System watchdog control register */
@@ -109,11 +100,24 @@ static void mpc8xxx_wdt_pr_warn(const char *msg)
 		reset ? "reset" : "machine check exception");
 }
 
-static int expect_close;
+static ssize_t mpc8xxx_wdt_write(struct file *file, const char __user *buf,
+				 size_t count, loff_t *ppos)
+{
+	if (count)
+		mpc8xxx_wdt_keepalive();
+	return count;
+}
 
-static void mpc8xxx_start_dog(void)
+static int mpc8xxx_wdt_open(struct inode *inode, struct file *file)
 {
 	u32 tmp = SWCRR_SWEN;
+	if (test_and_set_bit(0, &wdt_is_open))
+		return -EBUSY;
+
+	/* Once we start the watchdog we can't stop it */
+	if (nowayout)
+		__module_get(THIS_MODULE);
+
 	/* Good, fire up the show */
 	if (prescale)
 		tmp |= SWCRR_SWPR;
@@ -123,42 +127,6 @@ static void mpc8xxx_start_dog(void)
 	tmp |= timeout << 16;
 
 	out_be32(&wd_base->swcrr, tmp);
-}
-
-static int expect_close;
-
-static ssize_t mpc8xxx_wdt_write(struct file *file, const char __user *buf,
-				 size_t count, loff_t *ppos)
-{
-	if (count)
-	{
-		size_t i;
-
-		expect_close = 0;
-		for (i = 0; i < count; ++i) {
-			char c;
-			if (get_user(c, buf + i))
-				return -EFAULT;
-			if (c == 'V')
-				expect_close = 1;
-			if (c == 'S')
-				mpc8xxx_start_dog();
-		}
-		mpc8xxx_wdt_keepalive();
-	}
-	return count;
-}
-
-static int mpc8xxx_wdt_open(struct inode *inode, struct file *file)
-{
-	if (test_and_set_bit(0, &wdt_is_open))
-		return -EBUSY;
-
-	/* Once we start the watchdog we can't stop it */
-	if (nowayout)
-		__module_get(THIS_MODULE);
-
-	__module_get(THIS_MODULE); // for easier merge
 
 	del_timer_sync(&wdt_timer);
 
@@ -167,21 +135,12 @@ static int mpc8xxx_wdt_open(struct inode *inode, struct file *file)
 
 static int mpc8xxx_wdt_release(struct inode *inode, struct file *file)
 {
-	if (!nowayout || expect_close)
+	if (!nowayout)
 		mpc8xxx_wdt_timer_ping(0);
 	else
 		mpc8xxx_wdt_pr_warn("watchdog closed");
 	clear_bit(0, &wdt_is_open);
-	expect_close = 0;
 	return 0;
-}
-
-static void clean_rsr(void)
-{
-    if (rsr) {
-	iounmap(rsr);
-	rsr = NULL;
-    }
 }
 
 static long mpc8xxx_wdt_ioctl(struct file *file, unsigned int cmd,
@@ -196,14 +155,6 @@ static long mpc8xxx_wdt_ioctl(struct file *file, unsigned int cmd,
 	};
 
 	switch (cmd) {
-	case RESET_CAUSE_IOCTL:
-	    if (rsr && (in_be32(rsr) & RSR_WDT_RESET)) {
-		out_be32(rsr, in_be32(rsr) | RSR_WDT_RESET);
-		return RESET_WATCHDOG;
-	    }
-	    else {
-		return RESET_COLD;
-	    }
 	case WDIOC_GETSUPPORT:
 		return copy_to_user(argp, &ident, sizeof(ident)) ? -EFAULT : 0;
 	case WDIOC_GETSTATUS:
@@ -249,19 +200,6 @@ static int __devinit mpc8xxx_wdt_probe(struct platform_device *ofdev)
 		return -EINVAL;
 	wdt_type = match->data;
 
-	{	    
-	    /* get reset status register */
-	    struct device_node *soc = of_find_node_by_type(NULL, "soc");
-	    if (soc) {	    
-		unsigned int size;
-		static phys_addr_t immrbase = -1;
-		const void *prop = of_get_property(soc, "reg", &size);
-		immrbase = of_translate_address(soc, prop);
-		rsr = (unsigned *) ioremap_nocache(immrbase + 0x910, 0x4);
-		of_node_put(soc);
-	    }
-	}
-
 	if (!freq || freq == -1)
 		return -EINVAL;
 
@@ -281,8 +219,6 @@ static int __devinit mpc8xxx_wdt_probe(struct platform_device *ofdev)
 		timeout_sec = (timeout * wdt_type->prescaler) / freq;
 	else
 		timeout_sec = timeout / freq;
-
-	timeout_sec = 1;
 
 #ifdef MODULE
 	ret = mpc8xxx_wdt_init_late();
@@ -304,7 +240,6 @@ static int __devinit mpc8xxx_wdt_probe(struct platform_device *ofdev)
 	return 0;
 err_unmap:
 	iounmap(wd_base);
-	clean_rsr();
 	wd_base = NULL;
 	return ret;
 }
@@ -316,7 +251,6 @@ static int __devexit mpc8xxx_wdt_remove(struct platform_device *ofdev)
 	misc_deregister(&mpc8xxx_wdt_miscdev);
 	iounmap(wd_base);
 
-	clean_rsr();
 	return 0;
 }
 

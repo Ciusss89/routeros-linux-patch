@@ -24,8 +24,8 @@
 #include <asm-generic/unistd.h>
 
 /* Additional Tilera-specific syscalls. */
-#define __NR_cacheflush	(__NR_arch_specific_syscall + 1)
-__SYSCALL(__NR_cacheflush, sys_cacheflush)
+#define __NR_flush_cache	(__NR_arch_specific_syscall + 1)
+__SYSCALL(__NR_flush_cache, sys_flush_cache)
 
 #ifndef __tilegx__
 /* "Fast" syscalls provide atomic support for 32-bit chips. */

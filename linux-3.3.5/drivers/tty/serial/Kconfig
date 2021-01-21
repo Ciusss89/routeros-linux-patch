@@ -9,31 +9,6 @@ source "drivers/tty/serial/8250/Kconfig"
 
 comment "Non-8250 serial port support"
 
-config SERIAL_ADM5120
-	bool "ADM5120 serial port support"
-	depends on MIPS_MIKROTIK
-	select SERIAL_CORE
-	select SERIAL_CORE_CONSOLE
-	help
-	  Driver for the on chip UARTs on the ADM5120
-
-config SERIAL_AR9330
-	bool "AR9330 serial port support"
-	depends on MIPS_MIKROTIK
-	select SERIAL_CORE
-	select SERIAL_CORE_CONSOLE
-	help
-	  Driver for the on chip UARTs on the AR9331
-
-config SERIAL_CCR
-	bool "CCR serial port support"
-	depends on TILE
-	select SERIAL_CORE
-	select SERIAL_CORE_CONSOLE
-	help
-	  Driver for the on chip UARTs on the CCR
-
-
 config SERIAL_AMBA_PL010
 	tristate "ARM AMBA PL010 serial port support"
 	depends on ARM_AMBA && (BROKEN || !ARCH_VERSATILE)
@@ -993,7 +968,7 @@ config SERIAL_SGI_IOC3
 
 config SERIAL_MSM
 	bool "MSM on-chip serial port support"
-	depends on ARCH_MSM || ARCH_QCOM
+	depends on ARM && ARCH_MSM
 	select SERIAL_CORE
 
 config SERIAL_MSM_CONSOLE
@@ -1003,7 +978,7 @@ config SERIAL_MSM_CONSOLE
 
 config SERIAL_MSM_HS
 	tristate "MSM UART High Speed: Serial Driver"
-	depends on ARCH_MSM || ARCH_QCOM
+	depends on ARCH_MSM
 	select SERIAL_CORE
 	help
 	  If you have a machine based on MSM family of SoCs, you
@@ -1012,20 +987,6 @@ config SERIAL_MSM_HS
 
 	  Choose M here to compile it as a module. The module will be
 	  called msm_serial_hs.
-
-config SERIAL_MSM_HSL
-	tristate "MSM UART High Speed : Legacy mode Serial Driver"
-	depends on ARM && ARCH_MSM
-	select SERIAL_CORE
-	default n
-	help
-	  Select this module to enable MSM high speed UART driver.
-
-config SERIAL_MSM_HSL_CONSOLE
-	bool "MSM High speed serial legacy mode console support"
-	depends on SERIAL_MSM_HSL=y
-	select SERIAL_CORE_CONSOLE
-	default n
 
 config SERIAL_VT8500
 	bool "VIA VT8500 on-chip serial port support"

@@ -14,7 +14,6 @@
 
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
-#include <linux/swiotlb.h>
 #include <linux/vmalloc.h>
 #include <linux/export.h>
 #include <asm/tlbflush.h>
@@ -23,17 +22,13 @@
 /* Generic DMA mapping functions: */
 
 /*
- * Allocate what Linux calls "coherent" memory.  On TILEPro this is
- * uncached memory; on TILE-Gx it is hash-for-home memory.
+ * Allocate what Linux calls "coherent" memory, which for us just
+ * means uncached.
  */
-#ifdef __tilepro__
-#define PAGE_HOME_DMA PAGE_HOME_UNCACHED
-#else
-#define PAGE_HOME_DMA PAGE_HOME_HASH
-#endif
-
-static void *tile_dma_alloc_coherent(struct device *dev, size_t size,
-				     dma_addr_t *dma_handle, gfp_t gfp)
+void *dma_alloc_coherent(struct device *dev,
+			 size_t size,
+			 dma_addr_t *dma_handle,
+			 gfp_t gfp)
 {
 	u64 dma_mask = dev->coherent_dma_mask ?: DMA_BIT_MASK(32);
 	int node = dev_to_node(dev);
@@ -44,41 +39,39 @@ static void *tile_dma_alloc_coherent(struct device *dev, size_t size,
 	gfp |= __GFP_ZERO;
 
 	/*
-	 * If the mask specifies that the memory be in the first 4 GB, then
-	 * we force the allocation to come from the DMA zone.  We also
-	 * force the node to 0 since that's the only node where the DMA
-	 * zone isn't empty.  If the mask size is smaller than 32 bits, we
-	 * may still not be able to guarantee a suitable memory address, in
-	 * which case we will return NULL.  But such devices are uncommon.
+	 * By forcing NUMA node 0 for 32-bit masks we ensure that the
+	 * high 32 bits of the resulting PA will be zero.  If the mask
+	 * size is, e.g., 24, we may still not be able to guarantee a
+	 * suitable memory address, in which case we will return NULL.
+	 * But such devices are uncommon.
 	 */
-	if (dma_mask <= DMA_BIT_MASK(32)) {
-		gfp |= GFP_DMA;
+	if (dma_mask <= DMA_BIT_MASK(32))
 		node = 0;
-	}
 
-	pg = homecache_alloc_pages_node(node, gfp, order, PAGE_HOME_DMA);
+	pg = homecache_alloc_pages_node(node, gfp, order, PAGE_HOME_UNCACHED);
 	if (pg == NULL)
 		return NULL;
 
 	addr = page_to_phys(pg);
 	if (addr + size > dma_mask) {
-		__homecache_free_pages(pg, order);
+		homecache_free_pages(addr, order);
 		return NULL;
 	}
 
 	*dma_handle = addr;
-
 	return page_address(pg);
 }
+EXPORT_SYMBOL(dma_alloc_coherent);
 
 /*
- * Free memory that was allocated with tile_dma_alloc_coherent.
+ * Free memory that was allocated with dma_alloc_coherent.
  */
-static void tile_dma_free_coherent(struct device *dev, size_t size,
+void dma_free_coherent(struct device *dev, size_t size,
 		  void *vaddr, dma_addr_t dma_handle)
 {
 	homecache_free_pages((unsigned long)vaddr, get_order(size));
 }
+EXPORT_SYMBOL(dma_free_coherent);
 
 /*
  * The map routines "map" the specified address range for DMA
@@ -94,283 +87,52 @@ static void tile_dma_free_coherent(struct device *dev, size_t size,
  * can count on nothing having been touched.
  */
 
-/* Set up a single page for DMA access. */
-static void __dma_prep_page(struct page *page, unsigned long offset,
-			    size_t size, enum dma_data_direction direction)
-{
-	/*
-	 * Flush the page from cache if necessary.
-	 * On tilegx, data is delivered to hash-for-home L3; on tilepro,
-	 * data is delivered direct to memory.
-	 *
-	 * NOTE: If we were just doing DMA_TO_DEVICE we could optimize
-	 * this to be a "flush" not a "finv" and keep some of the
-	 * state in cache across the DMA operation, but it doesn't seem
-	 * worth creating the necessary flush_buffer_xxx() infrastructure.
-	 */
-	int home = page_home(page);
-	switch (home) {
-	case PAGE_HOME_HASH:
-#ifdef __tilegx__
-		return;
-#endif
-		break;
-	case PAGE_HOME_UNCACHED:
-#ifdef __tilepro__
-		return;
-#endif
-		break;
-	case PAGE_HOME_IMMUTABLE:
-		/* Should be going to the device only. */
-		BUG_ON(direction == DMA_FROM_DEVICE ||
-		       direction == DMA_BIDIRECTIONAL);
-		return;
-	case PAGE_HOME_INCOHERENT:
-		/* Incoherent anyway, so no need to work hard here. */
-		return;
-	default:
-		BUG_ON(home < 0 || home >= NR_CPUS);
-		break;
-	}
-	homecache_finv_page(page);
-
-#ifdef DEBUG_ALIGNMENT
-	/* Warn if the region isn't cacheline aligned. */
-	if (offset & (L2_CACHE_BYTES - 1) || (size & (L2_CACHE_BYTES - 1)))
-		pr_warn("Unaligned DMA to non-hfh memory: PA %#llx/%#lx\n",
-			PFN_PHYS(page_to_pfn(page)) + offset, size);
-#endif
-}
-
-/* Make the page ready to be read by the core. */
-static void __dma_complete_page(struct page *page, unsigned long offset,
-				size_t size, enum dma_data_direction direction)
-{
-#ifdef __tilegx__
-	switch (page_home(page)) {
-	case PAGE_HOME_HASH:
-		/* I/O device delivered data the way the cpu wanted it. */
-		break;
-	case PAGE_HOME_INCOHERENT:
-		/* Incoherent anyway, so no need to work hard here. */
-		break;
-	case PAGE_HOME_IMMUTABLE:
-		/* Extra read-only copies are not a problem. */
-		break;
-	default:
-		/* Flush the bogus hash-for-home I/O entries to memory. */
-		homecache_finv_map_page(page, PAGE_HOME_HASH);
-		break;
-	}
-#endif
-}
-
-static void __dma_prep_pa_range(dma_addr_t dma_addr, size_t size,
-	       enum dma_data_direction direction)
+/* Flush a PA range from cache page by page. */
+static void __dma_map_pa_range(dma_addr_t dma_addr, size_t size)
 {
 	struct page *page = pfn_to_page(PFN_DOWN(dma_addr));
-	unsigned long offset = dma_addr & (PAGE_SIZE - 1);
-	size_t bytes = min(size, (size_t)(PAGE_SIZE - offset));
+	size_t bytesleft = PAGE_SIZE - (dma_addr & (PAGE_SIZE - 1));
 
-	while (size != 0) {
-		__dma_prep_page(page, offset, bytes, direction);
-		size -= bytes;
-		++page;
-		offset = 0;
-		bytes = min((size_t)PAGE_SIZE, size);
+	while ((ssize_t)size > 0) {
+		/* Flush the page. */
+		homecache_flush_cache(page++, 0);
+
+		/* Figure out if we need to continue on the next page. */
+		size -= bytesleft;
+		bytesleft = PAGE_SIZE;
 	}
-}
-
-static void __dma_complete_pa_range(dma_addr_t dma_addr, size_t size,
-		 enum dma_data_direction direction)
-{
-	struct page *page = pfn_to_page(PFN_DOWN(dma_addr));
-	unsigned long offset = dma_addr & (PAGE_SIZE - 1);
-	size_t bytes = min(size, (size_t)(PAGE_SIZE - offset));
-
-	while (size != 0) {
-		__dma_complete_page(page, offset, bytes, direction);
-		size -= bytes;
-		++page;
-		offset = 0;
-		bytes = min((size_t)PAGE_SIZE, size);
-	}
-}
-
-static int tile_dma_map_sg(struct device *dev, struct scatterlist *sglist,
-			   int nents, enum dma_data_direction direction,
-			   struct dma_attrs *attrs)
-{
-	struct scatterlist *sg;
-	int i;
-
-	BUG_ON(!valid_dma_direction(direction));
-
-	WARN_ON(nents == 0 || sglist->length == 0);
-
-	for_each_sg(sglist, sg, nents, i) {
-		sg->dma_address = sg_phys(sg);
-		__dma_prep_pa_range(sg->dma_address, sg->length, direction);
-#ifdef CONFIG_NEED_SG_DMA_LENGTH
-		sg->dma_length = sg->length;
-#endif
-	}
-
-	return nents;
-}
-
-static void tile_dma_unmap_sg(struct device *dev, struct scatterlist *sglist,
-			      int nents, enum dma_data_direction direction,
-			      struct dma_attrs *attrs)
-{
-	struct scatterlist *sg;
-	int i;
-
-	BUG_ON(!valid_dma_direction(direction));
-	for_each_sg(sglist, sg, nents, i) {
-		sg->dma_address = sg_phys(sg);
-		__dma_complete_pa_range(sg->dma_address, sg->length,
-					direction);
-	}
-}
-
-static dma_addr_t tile_dma_map_page(struct device *dev, struct page *page,
-			unsigned long offset, size_t size,
-				    enum dma_data_direction direction,
-				    struct dma_attrs *attrs)
-{
-	BUG_ON(!valid_dma_direction(direction));
-
-	BUG_ON(offset + size > PAGE_SIZE);
-	__dma_prep_page(page, offset, size, direction);
-
-	return page_to_pa(page) + offset;
-}
-
-static void tile_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
-				size_t size, enum dma_data_direction direction,
-				struct dma_attrs *attrs)
-{
-	BUG_ON(!valid_dma_direction(direction));
-
-	__dma_complete_page(pfn_to_page(PFN_DOWN(dma_address)),
-			    dma_address & PAGE_OFFSET, size, direction);
-}
-
-static void tile_dma_sync_single_for_cpu(struct device *dev,
-					 dma_addr_t dma_handle,
-					 size_t size,
-					 enum dma_data_direction direction)
-{
-	BUG_ON(!valid_dma_direction(direction));
-
-	__dma_complete_pa_range(dma_handle, size, direction);
-}
-
-static void tile_dma_sync_single_for_device(struct device *dev,
-					    dma_addr_t dma_handle, size_t size,
-					    enum dma_data_direction direction)
-{
-	__dma_prep_pa_range(dma_handle, size, direction);
-}
-
-static void tile_dma_sync_sg_for_cpu(struct device *dev,
-				     struct scatterlist *sglist, int nelems,
-		    enum dma_data_direction direction)
-{
-	struct scatterlist *sg;
-	int i;
-
-	BUG_ON(!valid_dma_direction(direction));
-	WARN_ON(nelems == 0 || sglist->length == 0);
-
-	for_each_sg(sglist, sg, nelems, i) {
-		dma_sync_single_for_cpu(dev, sg->dma_address,
-					sg_dma_len(sg), direction);
-	}
-}
-
-static void tile_dma_sync_sg_for_device(struct device *dev,
-					struct scatterlist *sglist, int nelems,
-					enum dma_data_direction direction)
-{
-	struct scatterlist *sg;
-	int i;
-
-	BUG_ON(!valid_dma_direction(direction));
-	WARN_ON(nelems == 0 || sglist->length == 0);
-
-	for_each_sg(sglist, sg, nelems, i) {
-		dma_sync_single_for_device(dev, sg->dma_address,
-					   sg_dma_len(sg), direction);
-	}
-}
-
-static inline int
-tile_dma_mapping_error(struct device *dev, dma_addr_t dma_addr)
-{
-	return 0;
-}
-
-static inline int
-tile_dma_supported(struct device *dev, u64 mask)
-{
-	return 1;
-}
-
-static struct dma_map_ops tile_default_dma_map_ops = {
-	.alloc_coherent = tile_dma_alloc_coherent,
-	.free_coherent = tile_dma_free_coherent,
-	.map_page = tile_dma_map_page,
-	.unmap_page = tile_dma_unmap_page,
-	.map_sg = tile_dma_map_sg,
-	.unmap_sg = tile_dma_unmap_sg,
-	.sync_single_for_cpu = tile_dma_sync_single_for_cpu,
-	.sync_single_for_device = tile_dma_sync_single_for_device,
-	.sync_sg_for_cpu = tile_dma_sync_sg_for_cpu,
-	.sync_sg_for_device = tile_dma_sync_sg_for_device,
-	.mapping_error = tile_dma_mapping_error,
-	.dma_supported = tile_dma_supported
-};
-
-struct dma_map_ops *tile_dma_map_ops = &tile_default_dma_map_ops;
-EXPORT_SYMBOL(tile_dma_map_ops);
-
-/* Generic PCI DMA mapping functions */
-
-static void *tile_pci_dma_alloc_coherent(struct device *dev, size_t size,
-					 dma_addr_t *dma_handle, gfp_t gfp)
-{
-	int node = dev_to_node(dev);
-	int order = get_order(size);
-	struct page *pg;
-	dma_addr_t addr;
-
-	gfp |= __GFP_ZERO;
-
-	pg = homecache_alloc_pages_node(node, gfp, order, PAGE_HOME_DMA);
-	if (pg == NULL)
-		return NULL;
-
-	addr = page_to_phys(pg);
-
-	*dma_handle = phys_to_dma(dev, addr);
-
-	return page_address(pg);
 }
 
 /*
- * Free memory that was allocated with tile_pci_dma_alloc_coherent.
+ * dma_map_single can be passed any memory address, and there appear
+ * to be no alignment constraints.
+ *
+ * There is a chance that the start of the buffer will share a cache
+ * line with some other data that has been touched in the meantime.
  */
-static void tile_pci_dma_free_coherent(struct device *dev, size_t size,
-				       void *vaddr, dma_addr_t dma_handle)
+dma_addr_t dma_map_single(struct device *dev, void *ptr, size_t size,
+	       enum dma_data_direction direction)
 {
-	homecache_free_pages((unsigned long)vaddr, get_order(size));
-}
+	dma_addr_t dma_addr = __pa(ptr);
 
-static int tile_pci_dma_map_sg(struct device *dev, struct scatterlist *sglist,
-			       int nents, enum dma_data_direction direction,
-			       struct dma_attrs *attrs)
+	BUG_ON(!valid_dma_direction(direction));
+	WARN_ON(size == 0);
+
+	__dma_map_pa_range(dma_addr, size);
+
+	return dma_addr;
+}
+EXPORT_SYMBOL(dma_map_single);
+
+void dma_unmap_single(struct device *dev, dma_addr_t dma_addr, size_t size,
+		 enum dma_data_direction direction)
+{
+	BUG_ON(!valid_dma_direction(direction));
+}
+EXPORT_SYMBOL(dma_unmap_single);
+
+int dma_map_sg(struct device *dev, struct scatterlist *sglist, int nents,
+	   enum dma_data_direction direction)
 {
 	struct scatterlist *sg;
 	int i;
@@ -381,103 +143,73 @@ static int tile_pci_dma_map_sg(struct device *dev, struct scatterlist *sglist,
 
 	for_each_sg(sglist, sg, nents, i) {
 		sg->dma_address = sg_phys(sg);
-		__dma_prep_pa_range(sg->dma_address, sg->length, direction);
-
-		sg->dma_address = phys_to_dma(dev, sg->dma_address);
-#ifdef CONFIG_NEED_SG_DMA_LENGTH
-		sg->dma_length = sg->length;
-#endif
+		__dma_map_pa_range(sg->dma_address, sg->length);
 	}
 
 	return nents;
 }
+EXPORT_SYMBOL(dma_map_sg);
 
-static void tile_pci_dma_unmap_sg(struct device *dev,
-				  struct scatterlist *sglist, int nents,
-				  enum dma_data_direction direction,
-				  struct dma_attrs *attrs)
+void dma_unmap_sg(struct device *dev, struct scatterlist *sg, int nhwentries,
+	     enum dma_data_direction direction)
 {
-	struct scatterlist *sg;
-	int i;
-
 	BUG_ON(!valid_dma_direction(direction));
-	for_each_sg(sglist, sg, nents, i) {
-		sg->dma_address = sg_phys(sg);
-		__dma_complete_pa_range(sg->dma_address, sg->length,
-					direction);
-	}
 }
+EXPORT_SYMBOL(dma_unmap_sg);
 
-static dma_addr_t tile_pci_dma_map_page(struct device *dev, struct page *page,
-				   unsigned long offset, size_t size,
-					enum dma_data_direction direction,
-					struct dma_attrs *attrs)
+dma_addr_t dma_map_page(struct device *dev, struct page *page,
+			unsigned long offset, size_t size,
+			enum dma_data_direction direction)
 {
 	BUG_ON(!valid_dma_direction(direction));
 
 	BUG_ON(offset + size > PAGE_SIZE);
-	__dma_prep_page(page, offset, size, direction);
+	homecache_flush_cache(page, 0);
 
-	return phys_to_dma(dev, page_to_pa(page) + offset);
+	return page_to_pa(page) + offset;
 }
+EXPORT_SYMBOL(dma_map_page);
 
-static void tile_pci_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
-				    size_t size,
-				    enum dma_data_direction direction,
-				    struct dma_attrs *attrs)
+void dma_unmap_page(struct device *dev, dma_addr_t dma_address, size_t size,
+	       enum dma_data_direction direction)
 {
 	BUG_ON(!valid_dma_direction(direction));
-
-	dma_address = dma_to_phys(dev, dma_address);
-
-	__dma_complete_page(pfn_to_page(PFN_DOWN(dma_address)),
-			    dma_address & PAGE_OFFSET, size, direction);
 }
+EXPORT_SYMBOL(dma_unmap_page);
 
-static void tile_pci_dma_sync_single_for_cpu(struct device *dev,
-					     dma_addr_t dma_handle,
-					     size_t size,
-				   enum dma_data_direction direction)
+void dma_sync_single_for_cpu(struct device *dev, dma_addr_t dma_handle,
+			     size_t size, enum dma_data_direction direction)
 {
 	BUG_ON(!valid_dma_direction(direction));
-
-	dma_handle = dma_to_phys(dev, dma_handle);
-
-	__dma_complete_pa_range(dma_handle, size, direction);
 }
+EXPORT_SYMBOL(dma_sync_single_for_cpu);
 
-static void tile_pci_dma_sync_single_for_device(struct device *dev,
-				      dma_addr_t dma_handle,
-						size_t size,
-						enum dma_data_direction
-						direction)
+void dma_sync_single_for_device(struct device *dev, dma_addr_t dma_handle,
+				size_t size, enum dma_data_direction direction)
 {
-	dma_handle = dma_to_phys(dev, dma_handle);
-
-	__dma_prep_pa_range(dma_handle, size, direction);
-}
-
-static void tile_pci_dma_sync_sg_for_cpu(struct device *dev,
-					 struct scatterlist *sglist,
-					 int nelems,
-				      enum dma_data_direction direction)
-{
-	struct scatterlist *sg;
-	int i;
+	unsigned long start = PFN_DOWN(dma_handle);
+	unsigned long end = PFN_DOWN(dma_handle + size - 1);
+	unsigned long i;
 
 	BUG_ON(!valid_dma_direction(direction));
-	WARN_ON(nelems == 0 || sglist->length == 0);
-
-	for_each_sg(sglist, sg, nelems, i) {
-		dma_sync_single_for_cpu(dev, sg->dma_address,
-					sg_dma_len(sg), direction);
-	}
+	for (i = start; i <= end; ++i)
+		homecache_flush_cache(pfn_to_page(i), 0);
 }
+EXPORT_SYMBOL(dma_sync_single_for_device);
 
-static void tile_pci_dma_sync_sg_for_device(struct device *dev,
-					    struct scatterlist *sglist,
-					    int nelems,
+void dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg, int nelems,
 		    enum dma_data_direction direction)
+{
+	BUG_ON(!valid_dma_direction(direction));
+	WARN_ON(nelems == 0 || sg[0].length == 0);
+}
+EXPORT_SYMBOL(dma_sync_sg_for_cpu);
+
+/*
+ * Flush and invalidate cache for scatterlist.
+ */
+void dma_sync_sg_for_device(struct device *dev, struct scatterlist *sglist,
+			    int nelems, enum dma_data_direction direction)
 {
 	struct scatterlist *sg;
 	int i;
@@ -490,91 +222,31 @@ static void tile_pci_dma_sync_sg_for_device(struct device *dev,
 					   sg_dma_len(sg), direction);
 	}
 }
+EXPORT_SYMBOL(dma_sync_sg_for_device);
 
-static inline int
-tile_pci_dma_mapping_error(struct device *dev, dma_addr_t dma_addr)
+void dma_sync_single_range_for_cpu(struct device *dev, dma_addr_t dma_handle,
+				   unsigned long offset, size_t size,
+				   enum dma_data_direction direction)
 {
-	return 0;
+	dma_sync_single_for_cpu(dev, dma_handle + offset, size, direction);
 }
+EXPORT_SYMBOL(dma_sync_single_range_for_cpu);
 
-static inline int
-tile_pci_dma_supported(struct device *dev, u64 mask)
+void dma_sync_single_range_for_device(struct device *dev,
+				      dma_addr_t dma_handle,
+				      unsigned long offset, size_t size,
+				      enum dma_data_direction direction)
 {
-	return 1;
+	dma_sync_single_for_device(dev, dma_handle + offset, size, direction);
 }
+EXPORT_SYMBOL(dma_sync_single_range_for_device);
 
-static struct dma_map_ops tile_pci_default_dma_map_ops = {
-	.alloc_coherent = tile_pci_dma_alloc_coherent,
-	.free_coherent = tile_pci_dma_free_coherent,
-	.map_page = tile_pci_dma_map_page,
-	.unmap_page = tile_pci_dma_unmap_page,
-	.map_sg = tile_pci_dma_map_sg,
-	.unmap_sg = tile_pci_dma_unmap_sg,
-	.sync_single_for_cpu = tile_pci_dma_sync_single_for_cpu,
-	.sync_single_for_device = tile_pci_dma_sync_single_for_device,
-	.sync_sg_for_cpu = tile_pci_dma_sync_sg_for_cpu,
-	.sync_sg_for_device = tile_pci_dma_sync_sg_for_device,
-	.mapping_error = tile_pci_dma_mapping_error,
-	.dma_supported = tile_pci_dma_supported
-};
-
-struct dma_map_ops *gx_pci_dma_map_ops = &tile_pci_default_dma_map_ops;
-EXPORT_SYMBOL(gx_pci_dma_map_ops);
-
-/* PCI DMA mapping functions for legacy PCI devices */
-
-#ifdef CONFIG_SWIOTLB
-static void *tile_swiotlb_alloc_coherent(struct device *dev, size_t size,
-					 dma_addr_t *dma_handle, gfp_t gfp)
+/*
+ * dma_alloc_noncoherent() returns non-cacheable memory, so there's no
+ * need to do any flushing here.
+ */
+void dma_cache_sync(struct device *dev, void *vaddr, size_t size,
+		    enum dma_data_direction direction)
 {
-	gfp |= GFP_DMA;
-	return swiotlb_alloc_coherent(dev, size, dma_handle, gfp);
 }
-
-static void tile_swiotlb_free_coherent(struct device *dev, size_t size,
-				       void *vaddr, dma_addr_t dma_addr)
-{
-	swiotlb_free_coherent(dev, size, vaddr, dma_addr);
-}
-
-static struct dma_map_ops pci_swiotlb_dma_ops = {
-	.alloc_coherent = tile_swiotlb_alloc_coherent,
-	.free_coherent = tile_swiotlb_free_coherent,
-	.map_page = swiotlb_map_page,
-	.unmap_page = swiotlb_unmap_page,
-	.map_sg = swiotlb_map_sg_attrs,
-	.unmap_sg = swiotlb_unmap_sg_attrs,
-	.sync_single_for_cpu = swiotlb_sync_single_for_cpu,
-	.sync_single_for_device = swiotlb_sync_single_for_device,
-	.sync_sg_for_cpu = swiotlb_sync_sg_for_cpu,
-	.sync_sg_for_device = swiotlb_sync_sg_for_device,
-	.dma_supported = swiotlb_dma_supported,
-	.mapping_error = swiotlb_dma_mapping_error,
-};
-
-struct dma_map_ops *gx_legacy_pci_dma_map_ops = &pci_swiotlb_dma_ops;
-#else
-struct dma_map_ops *gx_legacy_pci_dma_map_ops;
-#endif
-EXPORT_SYMBOL(gx_legacy_pci_dma_map_ops);
-
-#ifdef CONFIG_ARCH_HAS_DMA_SET_COHERENT_MASK
-int dma_set_coherent_mask(struct device *dev, u64 mask)
-{
-	struct dma_map_ops *dma_ops = get_dma_ops(dev);
-
-	/* Handle legacy PCI devices with limited memory addressability. */
-	if (((dma_ops == gx_pci_dma_map_ops) ||
-	    (dma_ops == gx_legacy_pci_dma_map_ops)) &&
-	    (mask <= DMA_BIT_MASK(32))) {
-		if (mask > dev->archdata.max_direct_dma_addr)
-			mask = dev->archdata.max_direct_dma_addr;
-	}
-
-	if (!dma_supported(dev, mask))
-		return -EIO;
-	dev->coherent_dma_mask = mask;
-	return 0;
-}
-EXPORT_SYMBOL(dma_set_coherent_mask);
-#endif
+EXPORT_SYMBOL(dma_cache_sync);

@@ -1070,11 +1070,7 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 			} else {
 				hw_dbg(hw, "SFP+ module not supported\n");
 				hw->phy.type = ixgbe_phy_sfp_unsupported;
-#ifdef ALLOW_UNSUPORTED_SFP
 				status = IXGBE_ERR_SFP_NOT_SUPPORTED;
-#else
-				status = 0;
-#endif
 			}
 		} else {
 			status = 0;

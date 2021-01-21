@@ -14,7 +14,6 @@
 #include <linux/in6.h>
 
 #include <asm/uaccess.h>
-#include <asm/unaligned.h>
 
 /*
  * computes the checksum of a memory block at buff, length len,
@@ -106,23 +105,23 @@ static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
 	unsigned int csum;
 	int carry;
 
-	csum = get_unaligned(word + 0);
-	csum += get_unaligned(word + 1);
-	carry = (csum < get_unaligned(word + 1));
+	csum = word[0];
+	csum += word[1];
+	carry = (csum < word[1]);
 	csum += carry;
 
-	csum += get_unaligned(word + 2);
-	carry = (csum < get_unaligned(word + 2));
+	csum += word[2];
+	carry = (csum < word[2]);
 	csum += carry;
 
-	csum += get_unaligned(word + 3);
-	carry = (csum < get_unaligned(word + 3));
+	csum += word[3];
+	carry = (csum < word[3]);
 	csum += carry;
 
 	word += 4;
 	do {
-		csum += get_unaligned(word);
-		carry = (csum < get_unaligned(word));
+		csum += *word;
+		carry = (csum < *word);
 		csum += carry;
 		word++;
 	} while (word != stop);
@@ -209,90 +208,42 @@ static __inline__ __sum16 csum_ipv6_magic(const struct in6_addr *saddr,
 
 	"	addu	%0, %6		# csum\n"
 	"	sltu	$1, %0, %6	\n"
-#ifdef __MIPSEL__
-	"	lwl	%1, 3(%2)	# four words source address\n"
-	"	lwr	%1, 0(%2)	# four words source address\n"
-#else
-	"	lwl	%1, 0(%2)	# four words source address\n"
-	"	lwr	%1, 3(%2)	# four words source address\n"
-#endif
+	"	lw	%1, 0(%2)	# four words source address\n"
 	"	addu	%0, $1		\n"
 	"	addu	%0, %1		\n"
 	"	sltu	$1, %0, %1	\n"
 
-#ifdef __MIPSEL__
-	"	lwl	%1, 7(%2)	\n"
-	"	lwr	%1, 4(%2)	\n"
-#else
-	"	lwl	%1, 4(%2)	\n"
-	"	lwr	%1, 7(%2)	\n"
-#endif
+	"	lw	%1, 4(%2)	\n"
 	"	addu	%0, $1		\n"
 	"	addu	%0, %1		\n"
 	"	sltu	$1, %0, %1	\n"
 
-#ifdef __MIPSEL__
-	"	lwl	%1, 11(%2)	\n"
-	"	lwr	%1, 8(%2)	\n"
-#else
-	"	lwl	%1, 8(%2)	\n"
-	"	lwr	%1, 11(%2)	\n"
-#endif
+	"	lw	%1, 8(%2)	\n"
 	"	addu	%0, $1		\n"
 	"	addu	%0, %1		\n"
 	"	sltu	$1, %0, %1	\n"
 
-#ifdef __MIPSEL__
-	"	lwl	%1, 15(%2)	\n"
-	"	lwr	%1, 12(%2)	\n"
-#else
-	"	lwl	%1, 12(%2)	\n"
-	"	lwr	%1, 15(%2)	\n"
-#endif
+	"	lw	%1, 12(%2)	\n"
 	"	addu	%0, $1		\n"
 	"	addu	%0, %1		\n"
 	"	sltu	$1, %0, %1	\n"
 
-#ifdef __MIPSEL__
-	"	lwl	%1, 3(%3)	\n"
-	"	lwr	%1, 0(%3)	\n"
-#else
-	"	lwl	%1, 0(%3)	\n"
-	"	lwr	%1, 3(%3)	\n"
-#endif
+	"	lw	%1, 0(%3)	\n"
 	"	addu	%0, $1		\n"
 	"	addu	%0, %1		\n"
 	"	sltu	$1, %0, %1	\n"
 
-#ifdef __MIPSEL__
-	"	lwl	%1, 7(%3)	\n"
-	"	lwr	%1, 4(%3)	\n"
-#else
-	"	lwl	%1, 4(%3)	\n"
-	"	lwr	%1, 7(%3)	\n"
-#endif
+	"	lw	%1, 4(%3)	\n"
 	"	addu	%0, $1		\n"
 	"	addu	%0, %1		\n"
 	"	sltu	$1, %0, %1	\n"
 
-#ifdef __MIPSEL__
-	"	lwl	%1, 11(%3)	\n"
-	"	lwr	%1, 8(%3)	\n"
-#else
-	"	lwl	%1, 8(%3)	\n"
-	"	lwr	%1, 11(%3)	\n"
-#endif
+	"	lw	%1, 8(%3)	\n"
 	"	addu	%0, $1		\n"
 	"	addu	%0, %1		\n"
 	"	sltu	$1, %0, %1	\n"
 
-#ifdef __MIPSEL__
-	"	lwl	%1, 15(%3)	\n"
-	"	lwr	%1, 12(%3)	\n"
-#else
-	"	lwl	%1, 12(%3)	\n"
-	"	lwr	%1, 15(%3)	\n"
-#endif
+	"	lw	%1, 12(%3)	\n"
 	"	addu	%0, $1		\n"
 	"	addu	%0, %1		\n"
 	"	sltu	$1, %0, %1	\n"

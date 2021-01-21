@@ -11,11 +11,7 @@
 
 /* enough to cover all DEFINE_PER_CPUs in modules */
 #ifdef CONFIG_MODULES
-#ifdef __tilegx__
-#define PERCPU_MODULE_RESERVE          (64 << 10)
-#else
-#define PERCPU_MODULE_RESERVE          (32 << 10)
-#endif
+#define PERCPU_MODULE_RESERVE		(8 << 10)
 #else
 #define PERCPU_MODULE_RESERVE		0
 #endif

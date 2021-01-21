@@ -21,7 +21,7 @@ struct mm_context {
 	 * Written under the mmap_sem semaphore; read without the
 	 * semaphore but atomically, but it is conservatively set.
 	 */
-	unsigned long priority_cached;
+	unsigned int priority_cached;
 };
 
 typedef struct mm_context mm_context_t;

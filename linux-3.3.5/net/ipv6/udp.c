@@ -512,10 +512,8 @@ int udpv6_queue_rcv_skb(struct sock * sk, struct sk_buff *skb)
 	if (!ipv6_addr_any(&inet6_sk(sk)->daddr))
 		sock_rps_save_rxhash(sk, skb);
 
-	if (skb_dst(skb)) {
 	if (!xfrm6_policy_check(sk, XFRM_POLICY_IN, skb))
 		goto drop;
-	}
 
 	/*
 	 * UDP-Lite specific tests, ignored on UDP sockets (see net/ipv4/udp.c).

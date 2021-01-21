@@ -97,8 +97,6 @@
  *	Any questions? No questions, good. 		--ANK
  */
 
-extern struct kmem_cache *skbuff_head_cache __read_mostly;
-
 struct net_device;
 struct scatterlist;
 struct pipe_inode_info;
@@ -219,11 +217,14 @@ enum {
 	/* device driver is going to provide hardware time stamp */
 	SKBTX_IN_PROGRESS = 1 << 2,
 
+	/* ensure the originating sk reference is available on driver level */
+	SKBTX_DRV_NEEDS_SK_REF = 1 << 3,
+
 	/* device driver supports TX zero-copy buffers */
-	SKBTX_DEV_ZEROCOPY = 1 << 3,
+	SKBTX_DEV_ZEROCOPY = 1 << 4,
 
 	/* generate wifi status information (where possible) */
-	SKBTX_WIFI_STATUS = 1 << 4,
+	SKBTX_WIFI_STATUS = 1 << 5,
 };
 
 /*
@@ -410,8 +411,7 @@ struct sk_buff {
 			__u16	csum_offset;
 		};
 	};
-	__u16			priority;
-	__u16			ingress_priority;
+	__u32			priority;
 	kmemcheck_bitfield_begin(flags1);
 	__u8			local_df:1,
 				cloned:1,
@@ -433,23 +433,19 @@ struct sk_buff {
 #ifdef NET_SKBUFF_NF_DEFRAG_NEEDED
 	struct sk_buff		*nfct_reasm;
 #endif
-	int			(*okfn)(struct sk_buff *);
 #ifdef CONFIG_BRIDGE_NETFILTER
 	struct nf_bridge_info	*nf_bridge;
 #endif
 
 	int			skb_iif;
-
-	__u32			rxhash;
-
-	__u16			vlan_tci;
-
 #ifdef CONFIG_NET_SCHED
 	__u16			tc_index;	/* traffic control index */
 #ifdef CONFIG_NET_CLS_ACT
 	__u16			tc_verd;	/* traffic control verdict */
 #endif
 #endif
+
+	__u32			rxhash;
 
 	__u16			queue_mapping;
 	kmemcheck_bitfield_begin(flags2);
@@ -463,9 +459,6 @@ struct sk_buff {
 	/* 10/12 bit hole (depending on ndisc_nodetype presence) */
 	kmemcheck_bitfield_end(flags2);
 
-	__u8			layer7seen:1;
-	__u8			of_skip:1;
-
 #ifdef CONFIG_NET_DMA
 	dma_cookie_t		dma_cookie;
 #endif
@@ -478,8 +471,7 @@ struct sk_buff {
 		__u32		avail_size;
 	};
 
-	unsigned short		prmark;
-	unsigned short		hsmark;
+	__u16			vlan_tci;
 
 	sk_buff_data_t		transport_header;
 	sk_buff_data_t		network_header;
@@ -553,7 +545,6 @@ static inline struct rtable *skb_rtable(const struct sk_buff *skb)
 {
 	return (struct rtable *)skb_dst(skb);
 }
-
 
 extern void kfree_skb(struct sk_buff *skb);
 extern void consume_skb(struct sk_buff *skb);
@@ -1567,7 +1558,7 @@ static inline int pskb_network_may_pull(struct sk_buff *skb, unsigned int len)
  * NET_IP_ALIGN(2) + ethernet_header(14) + IP_header(20/40) + ports(8)
  */
 #ifndef NET_SKB_PAD
-#define NET_SKB_PAD	max(64, L1_CACHE_BYTES)
+#define NET_SKB_PAD	max(32, L1_CACHE_BYTES)
 #endif
 
 extern int ___pskb_trim(struct sk_buff *skb, unsigned int len);
@@ -1861,6 +1852,8 @@ static inline int __skb_cow(struct sk_buff *skb, unsigned int headroom,
 {
 	int delta = 0;
 
+	if (headroom < NET_SKB_PAD)
+		headroom = NET_SKB_PAD;
 	if (headroom > skb_headroom(skb))
 		delta = headroom - skb_headroom(skb);
 
@@ -1922,7 +1915,7 @@ static inline int skb_padto(struct sk_buff *skb, unsigned int len)
 }
 
 static inline int skb_add_data(struct sk_buff *skb,
-			       unsigned char __user *from, int copy)
+			       char __user *from, int copy)
 {
 	const int off = skb->len;
 
@@ -2370,7 +2363,6 @@ static inline void nf_reset(struct sk_buff *skb)
 	nf_bridge_put(skb->nf_bridge);
 	skb->nf_bridge = NULL;
 #endif
-	skb->layer7seen = 0;
 }
 
 /* Note: This doesn't put any conntrack and bridge info in dst. */
@@ -2385,7 +2377,6 @@ static inline void __nf_copy(struct sk_buff *dst, const struct sk_buff *src)
 	dst->nfct_reasm = src->nfct_reasm;
 	nf_conntrack_get_reasm(src->nfct_reasm);
 #endif
-	dst->okfn = src->okfn;
 #ifdef CONFIG_BRIDGE_NETFILTER
 	dst->nf_bridge  = src->nf_bridge;
 	nf_bridge_get(src->nf_bridge);
@@ -2423,14 +2414,6 @@ static inline void skb_copy_secmark(struct sk_buff *to, const struct sk_buff *fr
 static inline void skb_init_secmark(struct sk_buff *skb)
 { }
 #endif
-
-static inline void skb_reset_mark(struct sk_buff *skb)
-{
-    skb->mark = 0;
-    skb->prmark = 0;
-    skb->hsmark = 0;
-    skb->skb_iif = 0;
-}
 
 static inline void skb_set_queue_mapping(struct sk_buff *skb, u16 queue_mapping)
 {

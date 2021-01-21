@@ -25,7 +25,6 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/if_ether.h>
-#include <linux/if_vlan.h>
 #include <linux/netdevice.h>
 
 #include "hyperv_net.h"
@@ -53,27 +52,7 @@ static void rndis_filter_send_completion(void *ctx);
 
 static void rndis_filter_send_request_completion(void *ctx);
 
-static inline void *rndis_get_ppi(struct rndis_packet *rpkt, u32 type)
-{
-	struct rndis_per_packet_info *ppi;
-	int len;
 
-	if (rpkt->per_pkt_info_offset == 0)
-		return NULL;
-
-	ppi = (struct rndis_per_packet_info *)((ulong)rpkt +
-		rpkt->per_pkt_info_offset);
-	len = rpkt->per_pkt_info_len;
-
-	while (len > 0) {
-		if (ppi->type == type)
-			return (void *)((ulong)ppi + ppi->ppi_offset);
-		len -= ppi->size;
-		ppi = (struct rndis_per_packet_info *)((ulong)ppi + ppi->size);
-	}
-
-	return NULL;
-}
 
 static struct rndis_device *get_rndis_device(void)
 {
@@ -330,7 +309,6 @@ static void rndis_filter_receive_data(struct rndis_device *dev,
 {
 	struct rndis_packet *rndis_pkt;
 	u32 data_offset;
-	struct ndis_pkt_8021q_info *vlan;
 
 	rndis_pkt = &msg->msg.pkt;
 
@@ -366,14 +344,6 @@ static void rndis_filter_receive_data(struct rndis_device *dev,
 
 	pkt->is_data_pkt = true;
 
-	vlan = rndis_get_ppi(rndis_pkt, IEEE_8021Q_INFO);
-	if (vlan) {
-		pkt->vlan_tci = VLAN_TAG_PRESENT | vlan->vlanid |
-			(vlan->pri << VLAN_PRIO_SHIFT);
-	} else {
-		pkt->vlan_tci = 0;
-	}
-
 	netvsc_recv_callback(dev->net_dev->dev, pkt);
 }
 
@@ -382,7 +352,7 @@ int rndis_filter_receive(struct hv_device *dev,
 {
 	struct netvsc_device *net_dev = hv_get_drvdata(dev);
 	struct rndis_device *rndis_dev;
-	struct rndis_message *rndis_msg;
+	struct rndis_message rndis_msg;
 	struct rndis_message *rndis_hdr;
 	struct net_device *ndev;
 
@@ -405,32 +375,46 @@ int rndis_filter_receive(struct hv_device *dev,
 		return -ENODEV;
 	}
 
-	rndis_msg = pkt->data;
+	rndis_hdr = pkt->data;
 
-	dump_rndis_message(dev, rndis_msg);
+	/* Make sure we got a valid rndis message */
+	if ((rndis_hdr->ndis_msg_type != REMOTE_NDIS_PACKET_MSG) &&
+	    (rndis_hdr->msg_len > sizeof(struct rndis_message))) {
+		netdev_err(ndev, "incoming rndis message buffer overflow "
+			   "detected (got %u, max %zu)..marking it an error!\n",
+			   rndis_hdr->msg_len,
+			   sizeof(struct rndis_message));
+	}
 
-	switch (rndis_msg->ndis_msg_type) {
+	memcpy(&rndis_msg, rndis_hdr,
+		(rndis_hdr->msg_len > sizeof(struct rndis_message)) ?
+			sizeof(struct rndis_message) :
+			rndis_hdr->msg_len);
+
+	dump_rndis_message(dev, &rndis_msg);
+
+	switch (rndis_msg.ndis_msg_type) {
 	case REMOTE_NDIS_PACKET_MSG:
 		/* data msg */
-		rndis_filter_receive_data(rndis_dev, rndis_msg, pkt);
+		rndis_filter_receive_data(rndis_dev, &rndis_msg, pkt);
 		break;
 
 	case REMOTE_NDIS_INITIALIZE_CMPLT:
 	case REMOTE_NDIS_QUERY_CMPLT:
 	case REMOTE_NDIS_SET_CMPLT:
 		/* completion msgs */
-		rndis_filter_receive_response(rndis_dev, rndis_msg);
+		rndis_filter_receive_response(rndis_dev, &rndis_msg);
 		break;
 
 	case REMOTE_NDIS_INDICATE_STATUS_MSG:
 		/* notification msgs */
-		rndis_filter_receive_indicate_status(rndis_dev, rndis_msg);
+		rndis_filter_receive_indicate_status(rndis_dev, &rndis_msg);
 		break;
 	default:
 		netdev_err(ndev,
 			"unhandled rndis message (type %u len %u)\n",
-			   rndis_msg->ndis_msg_type,
-			   rndis_msg->msg_len);
+			   rndis_msg.ndis_msg_type,
+			   rndis_msg.msg_len);
 		break;
 	}
 
@@ -790,7 +774,6 @@ int rndis_filter_send(struct hv_device *dev,
 	struct rndis_message *rndisMessage;
 	struct rndis_packet *rndisPacket;
 	u32 rndisMessageSize;
-	bool isvlan = pkt->vlan_tci & VLAN_TAG_PRESENT;
 
 	/* Add the rndis header */
 	filterPacket = (struct rndis_filter_packet *)pkt->extension;
@@ -799,8 +782,6 @@ int rndis_filter_send(struct hv_device *dev,
 
 	rndisMessage = &filterPacket->msg;
 	rndisMessageSize = RNDIS_MESSAGE_SIZE(struct rndis_packet);
-	if (isvlan)
-		rndisMessageSize += NDIS_VLAN_PPI_SIZE;
 
 	rndisMessage->ndis_msg_type = REMOTE_NDIS_PACKET_MSG;
 	rndisMessage->msg_len = pkt->total_data_buflen +
@@ -808,28 +789,7 @@ int rndis_filter_send(struct hv_device *dev,
 
 	rndisPacket = &rndisMessage->msg.pkt;
 	rndisPacket->data_offset = sizeof(struct rndis_packet);
-	if (isvlan)
-		rndisPacket->data_offset += NDIS_VLAN_PPI_SIZE;
 	rndisPacket->data_len = pkt->total_data_buflen;
-
-	if (pkt->vlan_tci & VLAN_TAG_PRESENT) {
-		struct ndis_pkt_8021q_info *vlan;
-		struct rndis_per_packet_info *ppi;
-
-		rndisPacket->per_pkt_info_offset = sizeof(struct rndis_packet);
-		rndisPacket->per_pkt_info_len = NDIS_VLAN_PPI_SIZE;
-
-		ppi = (struct rndis_per_packet_info *)
-		    ((ulong) rndisPacket + rndisPacket->per_pkt_info_offset);
-		ppi->size = NDIS_VLAN_PPI_SIZE;
-		ppi->type = IEEE_8021Q_INFO;
-		ppi->ppi_offset = sizeof(struct rndis_per_packet_info);
-
-		vlan = (struct ndis_pkt_8021q_info *)
-		    ((void *) ppi + ppi->ppi_offset);
-		vlan->vlanid = pkt->vlan_tci & VLAN_VID_MASK;
-		vlan->pri = (pkt->vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
-	}
 
 	pkt->is_data_pkt = true;
 	pkt->page_buf[0].pfn = virt_to_phys(rndisMessage) >> PAGE_SHIFT;

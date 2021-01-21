@@ -71,7 +71,7 @@ connmark_tg(struct sk_buff *skb, const struct xt_action_param *par)
 		break;
 	}
 
-	return info->passthrough ? XT_CONTINUE : NF_ACCEPT;
+	return XT_CONTINUE;
 }
 
 static int connmark_tg_check(const struct xt_tgchk_param *par)

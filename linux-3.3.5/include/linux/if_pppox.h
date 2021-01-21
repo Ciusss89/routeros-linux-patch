@@ -148,23 +148,6 @@ struct pppoe_hdr {
 #ifdef __KERNEL__
 #include <linux/skbuff.h>
 
-#define PPPOE_HASH_BITS 12
-#define PPPOE_HASH_SIZE (1 << PPPOE_HASH_BITS)
-#define PPPOE_HASH_MASK	(PPPOE_HASH_SIZE - 1)
-
-struct pppoe_net {
-	/*
-	 * we could use _single_ hash table for all
-	 * nets by injecting net id into the hash but
-	 * it would increase hash chains and add
-	 * a few additional math comparations messy
-	 * as well, moreover in case of SMP less locking
-	 * controversy here
-	 */
-	struct hlist_head hash_table[PPPOE_HASH_SIZE];
-	rwlock_t hash_lock;
-};
-
 static inline struct pppoe_hdr *pppoe_hdr(const struct sk_buff *skb)
 {
 	return (struct pppoe_hdr *)skb_network_header(skb);
@@ -191,8 +174,7 @@ struct pppox_sock {
 	/* struct sock must be the first member of pppox_sock */
 	struct sock sk;
 	struct ppp_channel chan;
-	struct hlist_node	hash_next;
-	struct rcu_head		rcu;
+	struct pppox_sock	*next;	  /* for hash table */
 	union {
 		struct pppoe_opt pppoe;
 		struct pptp_opt  pptp;

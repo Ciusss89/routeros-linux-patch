@@ -411,7 +411,7 @@ static int ipip_rcv(struct sk_buff *skb)
 
 		ipip_ecn_decapsulate(iph, skb);
 
-		netif_receive_any(skb);
+		netif_rx(skb);
 
 		rcu_read_unlock();
 		return 0;
@@ -554,7 +554,6 @@ static netdev_tx_t ipip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 		iph->ttl	=	old_iph->ttl;
 
 	nf_reset(skb);
-	skb_reset_mark(skb);
 	tstats = this_cpu_ptr(dev->tstats);
 	__IPTUNNEL_XMIT(tstats, &dev->stats);
 	return NETDEV_TX_OK;

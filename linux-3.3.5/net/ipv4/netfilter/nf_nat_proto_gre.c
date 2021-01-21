@@ -23,7 +23,6 @@
  *
  */
 
-#include <asm/unaligned.h>
 #include <linux/module.h>
 #include <linux/skbuff.h>
 #include <linux/ip.h>

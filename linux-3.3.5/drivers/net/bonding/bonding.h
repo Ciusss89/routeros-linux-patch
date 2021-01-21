@@ -15,9 +15,6 @@
 #ifndef _LINUX_BONDING_H
 #define _LINUX_BONDING_H
 
-#undef CONFIG_IPV6
-#undef CONFIG_IPV6_MODULE
-
 #include <linux/timer.h>
 #include <linux/proc_fs.h>
 #include <linux/if_bonding.h>
@@ -251,9 +248,6 @@ struct bonding {
 	/* debugging suport via debugfs */
 	struct	 dentry *debug_dir;
 #endif /* CONFIG_DEBUG_FS */
-	struct rtnl_link_stats64 stats_tot;
-	bool stats_last_valid;
-	struct rtnl_link_stats64 stats_last;
 };
 
 static inline bool bond_vlan_used(struct bonding *bond)

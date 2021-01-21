@@ -71,8 +71,7 @@
 
 #include "kmap_skb.h"
 
-struct kmem_cache *skbuff_head_cache __read_mostly;
-EXPORT_SYMBOL(skbuff_head_cache);
+static struct kmem_cache *skbuff_head_cache __read_mostly;
 static struct kmem_cache *skbuff_fclone_cache __read_mostly;
 
 static void sock_pipe_buf_release(struct pipe_inode_info *pipe,
@@ -184,10 +183,6 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	if (!skb)
 		goto out;
 	prefetchw(skb);
-
-#ifdef CONFIG_MIPS_MIKROTIK
-	gfp_mask |= __GFP_DMA;
-#endif
 
 	/* We do our best to align skb_shared_info on a separate cache
 	 * line. It usually works because kmalloc(X > SMP_CACHE_BYTES) gives
@@ -607,14 +602,11 @@ static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 	new->ip_summed		= old->ip_summed;
 	skb_copy_queue_mapping(new, old);
 	new->priority		= old->priority;
-	new->ingress_priority   = old->ingress_priority;
 #if IS_ENABLED(CONFIG_IP_VS)
 	new->ipvs_property	= old->ipvs_property;
 #endif
 	new->protocol		= old->protocol;
 	new->mark		= old->mark;
-	new->prmark		= old->prmark;
-	new->hsmark		= old->hsmark;
 	new->skb_iif		= old->skb_iif;
 	__nf_copy(new, old);
 #if IS_ENABLED(CONFIG_NETFILTER_XT_TARGET_TRACE)
@@ -938,10 +930,6 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 		BUG();
 
 	size = SKB_DATA_ALIGN(size);
-
-#ifdef CONFIG_MIPS_MIKROTIK
-	gfp_mask |= __GFP_DMA;
-#endif
 
 	/* Check if we can avoid taking references on fragments if we own
 	 * the last reference on skb->head. (see skb_release_data())

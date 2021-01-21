@@ -16,7 +16,6 @@
  */
 #include <linux/module.h>
 #include <linux/spinlock.h>
-#include <asm/io.h>
 #include "gpiomux.h"
 
 static DEFINE_SPINLOCK(gpiomux_lock);
@@ -95,11 +94,3 @@ static int __init gpiomux_init(void)
 	return 0;
 }
 postcore_initcall(gpiomux_init);
-
-void msm_gpiomux_gsbi_select_copy(void __iomem *address, unsigned copy_selection)
-{
-	uint32_t bits;
-	bits = (copy_selection) & 0x1;
-	__raw_writel(bits, address);
-	mb();
-}

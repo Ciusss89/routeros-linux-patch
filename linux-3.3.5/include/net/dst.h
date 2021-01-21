@@ -247,18 +247,14 @@ static inline void dst_hold(struct dst_entry * dst)
 static inline void dst_use(struct dst_entry *dst, unsigned long time)
 {
 	dst_hold(dst);
-//	dst->__use++;
-	if (dst->lastuse != time) {
+	dst->__use++;
 	dst->lastuse = time;
-	}
 }
 
 static inline void dst_use_noref(struct dst_entry *dst, unsigned long time)
 {
-//	dst->__use++;
-	if (dst->lastuse != time) {
+	dst->__use++;
 	dst->lastuse = time;
-	}
 }
 
 static inline
@@ -336,7 +332,6 @@ static inline void __skb_tunnel_rx(struct sk_buff *skb, struct net_device *dev)
 	skb_set_queue_mapping(skb, 0);
 	skb_dst_drop(skb);
 	nf_reset(skb);
-	skb_reset_mark(skb);
 }
 
 /**

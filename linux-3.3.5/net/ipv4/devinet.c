@@ -727,7 +727,6 @@ int devinet_ioctl(struct net *net, unsigned int cmd, void __user *arg)
 		break;
 
 	case SIOCSIFFLAGS:
-	case SIOCSPROXYARP:
 		ret = -EACCES;
 		if (!capable(CAP_NET_ADMIN))
 			goto out;
@@ -787,8 +786,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, void __user *arg)
 	}
 
 	ret = -EADDRNOTAVAIL;
-	if (!ifa && cmd != SIOCSIFADDR && cmd != SIOCSIFFLAGS
-	    && cmd != SIOCSPROXYARP)
+	if (!ifa && cmd != SIOCSIFADDR && cmd != SIOCSIFFLAGS)
 		goto done;
 
 	switch (cmd) {
@@ -819,23 +817,6 @@ int devinet_ioctl(struct net *net, unsigned int cmd, void __user *arg)
 			break;
 		}
 		ret = dev_change_flags(dev, ifr.ifr_flags);
-		break;
-
-	case SIOCSPROXYARP:
-		ret = -EINVAL;
-		if (in_dev) {
-			ret = 0;
-			if (ifr.ifr_flags) {
-			    IN_DEV_CONF_SET(in_dev, PROXY_ARP, 1);
-			    IN_DEV_CONF_SET(in_dev, ARP_IGNORE, 0);
-			    IN_DEV_CONF_SET(in_dev, ARP_ANNOUNCE, 0);
-			}
-			else {
-			    IN_DEV_CONF_SET(in_dev, PROXY_ARP, 0);
-			    IN_DEV_CONF_SET(in_dev, ARP_IGNORE, 1);
-			    IN_DEV_CONF_SET(in_dev, ARP_ANNOUNCE, 2);
-			}
-		}
 		break;
 
 	case SIOCSIFADDR:	/* Set interface address (and family) */
@@ -1045,10 +1026,7 @@ static __be32 confirm_addr_indev(struct in_device *in_dev, __be32 dst,
 				break;
 		}
 		if (!same) {
-			/* match iface local address by local as well
-			   to support ethernets with /32 addresses */
-			same = (!local || inet_ifa_match(local, ifa)
-				|| local == ifa->ifa_local) &&
+			same = (!local || inet_ifa_match(local, ifa)) &&
 				(!dst || inet_ifa_match(dst, ifa));
 			if (same && addr) {
 				if (local || !dst)
@@ -1714,19 +1692,15 @@ static void __devinet_sysctl_unregister(struct ipv4_devconf *cnf)
 
 static void devinet_sysctl_register(struct in_device *idev)
 {
-#if 0
 	neigh_sysctl_register(idev->dev, idev->arp_parms, "ipv4", NULL);
 	__devinet_sysctl_register(dev_net(idev->dev), idev->dev->name,
 					&idev->cnf);
-#endif
 }
 
 static void devinet_sysctl_unregister(struct in_device *idev)
 {
-#if 0
 	__devinet_sysctl_unregister(&idev->cnf);
 	neigh_sysctl_unregister(idev->arp_parms);
-#endif
 }
 
 static struct ctl_table ctl_forward_entry[] = {

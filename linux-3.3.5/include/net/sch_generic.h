@@ -55,10 +55,6 @@ struct Qdisc {
 	const struct Qdisc_ops	*ops;
 	struct qdisc_size_table	__rcu *stab;
 	struct list_head	list;
-	union {
-		struct rb_node		tree_node;
-		struct rb_root		tree_root;
-	};
 	u32			handle;
 	u32			parent;
 	atomic_t		refcnt;
@@ -87,8 +83,6 @@ struct Qdisc {
 	struct rcu_head		rcu_head;
 	spinlock_t		busylock;
 	u32			limit;
-
-	void *lockless_classify_arg;
 };
 
 static inline bool qdisc_is_running(const struct Qdisc *qdisc)
@@ -172,8 +166,6 @@ struct Qdisc_ops {
 
 	int			(*dump)(struct Qdisc *, struct sk_buff *);
 	int			(*dump_stats)(struct Qdisc *, struct gnet_dump *);
-	int			(*dump_stats_ext)(struct Qdisc *, struct gnet_dump *);
-	int			(*enqueue_classified)(struct sk_buff *, struct Qdisc *, u32 classid);
 
 	struct module		*owner;
 };
@@ -432,7 +424,7 @@ static inline bool qdisc_tx_is_noop(const struct net_device *dev)
 
 static inline unsigned int qdisc_pkt_len(const struct sk_buff *skb)
 {
-	return skb->len;
+	return qdisc_skb_cb(skb)->pkt_len;
 }
 
 /* additional qdisc xmit flags (NET_XMIT_MASK in linux/netdevice.h) */
@@ -466,6 +458,7 @@ static inline int qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 
 static inline int qdisc_enqueue_root(struct sk_buff *skb, struct Qdisc *sch)
 {
+	qdisc_skb_cb(skb)->pkt_len = skb->len;
 	return qdisc_enqueue(skb, sch) & NET_XMIT_MASK;
 }
 

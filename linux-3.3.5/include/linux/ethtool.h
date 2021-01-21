@@ -334,8 +334,6 @@ struct ethtool_test {
 	__u32	cmd;		/* ETHTOOL_TEST */
 	__u32	flags;		/* ETH_TEST_FL_xxx */
 	__u32	reserved;
-	__u32	reserved2;
-	__u32	reserved3;
 	__u32	len;		/* result length, in number of u64 elements */
 	__u64	data[0];
 };

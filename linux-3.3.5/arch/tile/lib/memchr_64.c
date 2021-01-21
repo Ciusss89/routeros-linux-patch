@@ -15,7 +15,6 @@
 #include <linux/types.h>
 #include <linux/string.h>
 #include <linux/module.h>
-#include "string-endian.h"
 
 void *memchr(const void *s, int c, size_t n)
 {
@@ -40,8 +39,11 @@ void *memchr(const void *s, int c, size_t n)
 
 	/* Read the first word, but munge it so that bytes before the array
 	 * will not match goal.
+	 *
+	 * Note that this shift count expression works because we know
+	 * shift counts are taken mod 64.
 	 */
-	before_mask = MASK(s_int);
+	before_mask = (1ULL << (s_int << 3)) - 1;
 	v = (*p | before_mask) ^ (goal & before_mask);
 
 	/* Compute the address of the last byte. */
@@ -63,7 +65,7 @@ void *memchr(const void *s, int c, size_t n)
 	/* We found a match, but it might be in a byte past the end
 	 * of the array.
 	 */
-	ret = ((char *)p) + (CFZ(bits) >> 3);
+	ret = ((char *)p) + (__insn_ctz(bits) >> 3);
 	return (ret <= last_byte_ptr) ? ret : NULL;
 }
 EXPORT_SYMBOL(memchr);

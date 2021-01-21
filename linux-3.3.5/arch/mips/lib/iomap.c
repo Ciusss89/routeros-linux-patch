@@ -25,8 +25,6 @@
 
 #define PIO_MASK	0x0ffffUL
 
-#ifndef CONFIG_MIPS_MIKROTIK
-
 unsigned int ioread8(void __iomem *addr)
 {
 	return readb(addr);
@@ -195,8 +193,6 @@ void iowrite32_rep(void __iomem *addr, const void *src, unsigned long count)
 }
 
 EXPORT_SYMBOL(iowrite32_rep);
-
-#endif
 
 /*
  * Create a virtual mapping cookie for an IO port range

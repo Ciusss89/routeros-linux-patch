@@ -24,7 +24,6 @@
 #include <asm/byteorder.h>
 #include <asm/uaccess.h>
 #include <asm/checksum.h>
-#include <asm/unaligned.h>
 
 #ifndef _HAVE_ARCH_COPY_AND_CSUM_FROM_USER
 static inline
@@ -99,7 +98,7 @@ static inline void csum_replace4(__sum16 *sum, __be32 from, __be32 to)
 {
 	__be32 diff[] = { ~from, to };
 
-	put_unaligned(csum_fold(csum_partial(diff, sizeof(diff), ~csum_unfold(get_unaligned(sum)))), sum);
+	*sum = csum_fold(csum_partial(diff, sizeof(diff), ~csum_unfold(*sum)));
 }
 
 static inline void csum_replace2(__sum16 *sum, __be16 from, __be16 to)

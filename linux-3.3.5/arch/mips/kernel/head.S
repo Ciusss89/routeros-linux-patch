@@ -141,7 +141,7 @@ FEXPORT(__kernel_entry)
 	j	kernel_entry
 #endif
 
-	__HEAD
+	__REF
 
 NESTED(kernel_entry, 16, sp)			# kernel entry point
 

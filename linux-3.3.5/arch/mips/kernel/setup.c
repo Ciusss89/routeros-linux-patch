@@ -160,7 +160,7 @@ early_param("rd_start", rd_start_early);
 
 static int __init rd_size_early(char *p)
 {
-	initrd_end = initrd_start + memparse(p, &p);
+	initrd_end += memparse(p, &p);
 	return 0;
 }
 early_param("rd_size", rd_size_early);
@@ -169,8 +169,6 @@ early_param("rd_size", rd_size_early);
 static unsigned long __init init_initrd(void)
 {
 	unsigned long end;
-//	initrd_start = 0x81000000;
-//	initrd_end = 0x81000000 + 9000000;
 
 	/*
 	 * Board specific code or command line parser should have
@@ -585,7 +583,6 @@ static void __init resource_init(void)
 	}
 }
 
-extern void cpu_cache_init(void);
 void __init setup_arch(char **cmdline_p)
 {
 	cpu_probe();
@@ -609,8 +606,6 @@ void __init setup_arch(char **cmdline_p)
 
 	resource_init();
 	plat_smp_setup();
-
-	cpu_cache_init();
 }
 
 unsigned long kernelsp[NR_CPUS];

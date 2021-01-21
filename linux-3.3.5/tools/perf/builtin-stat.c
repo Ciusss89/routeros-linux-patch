@@ -828,11 +828,7 @@ static void abs_printout(int cpu, struct perf_evsel *evsel, double avg)
 		total = avg_stats(&runtime_cacherefs_stats[cpu]);
 
 		if (total)
-#ifdef __tilegx__
-			ratio = avg * 100 / (total + avg);
-#else
 			ratio = avg * 100 / total;
-#endif
 
 		fprintf(output, " # %8.3f %% of all cache refs    ", ratio);
 

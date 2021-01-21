@@ -283,7 +283,6 @@ enum rtattr_type_t {
 	RTA_MP_ALGO, /* no longer used */
 	RTA_TABLE,
 	RTA_MARK,
-	RTA_MPLSKEY,
 	__RTA_MAX
 };
 
@@ -605,7 +604,6 @@ struct tcamsg {
 
 /* New extended info filters for IFLA_EXT_MASK */
 #define RTEXT_FILTER_VF		(1 << 0)
-#define RTEXT_FILTER_COMPACT	(1 << 31)
 
 /* End of information exported to user level */
 

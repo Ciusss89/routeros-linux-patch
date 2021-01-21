@@ -221,8 +221,6 @@ extern struct jump_label_key rps_needed;
 struct neighbour;
 struct neigh_parms;
 struct sk_buff;
-struct m_port;
-struct of_port;
 
 struct netdev_hw_addr {
 	struct list_head	list;
@@ -907,7 +905,6 @@ struct netdev_fcoe_hbainfo {
  *	Must return >0 or -errno if it changed dev->features itself.
  *
  */
-struct fp_buf;
 struct net_device_ops {
 	int			(*ndo_init)(struct net_device *dev);
 	void			(*ndo_uninit)(struct net_device *dev);
@@ -915,9 +912,6 @@ struct net_device_ops {
 	int			(*ndo_stop)(struct net_device *dev);
 	netdev_tx_t		(*ndo_start_xmit) (struct sk_buff *skb,
 						   struct net_device *dev);
-	int			(*ndo_fast_path_xmit) (struct net_device *dev,
-						       struct fp_buf *fpb);
-	int			(*ndo_xmit_commit) (struct net_device *dev);
 	u16			(*ndo_select_queue)(struct net_device *dev,
 						    struct sk_buff *skb);
 	void			(*ndo_change_rx_flags)(struct net_device *dev,
@@ -932,8 +926,6 @@ struct net_device_ops {
 					          struct ifmap *map);
 	int			(*ndo_change_mtu)(struct net_device *dev,
 						  int new_mtu);
-	int			(*ndo_change_l2mtu)(struct net_device *dev,
-						  int new_l2mtu);
 	int			(*ndo_neigh_setup)(struct net_device *dev,
 						   struct neigh_parms *);
 	void			(*ndo_tx_timeout) (struct net_device *dev);
@@ -1020,25 +1012,6 @@ struct net_device_ops {
  *	FIXME: cleanup struct net_device such that network protocol info
  *	moves out.
  */
-struct fp_stuff;
-struct fp_dev_pcpu_stats;
-struct fp_stats_rcu;
-struct fp_dev {
-	struct fp_stuff *stuff;
-	int (*xmit)(struct net_device *dev, struct fp_buf *fpb);
-	struct hlist_node list;
-	struct fp_dev_pcpu_stats __percpu *stats;
-	struct fp_stats_rcu *stats_rcu;
-	u64 sp_rx_packet;
-	u64 sp_tx_packet;
-	u64 sp_rx_byte;
-	u64 sp_tx_byte;
-	u64 fp_rx_packet;
-	u64 fp_tx_packet;
-	u64 fp_rx_byte;
-	u64 fp_tx_byte;
-	u64 tx_drop;
-};
 
 struct net_device {
 
@@ -1120,7 +1093,6 @@ struct net_device {
 	unsigned char		dma;		/* DMA channel		*/
 
 	unsigned int		mtu;	/* interface MTU value		*/
-	unsigned		l2mtu;	/* real layer 2 MTU */
 	unsigned short		type;	/* interface hardware type	*/
 	unsigned short		hard_header_len;	/* hardware hdr length	*/
 
@@ -1150,7 +1122,6 @@ struct net_device {
 
 #if IS_ENABLED(CONFIG_VLAN_8021Q)
 	struct vlan_info __rcu	*vlan_info;	/* VLAN info */
-	struct vlan_info __rcu	*vlan_info_alt;	/* VLAN info */
 #endif
 #if IS_ENABLED(CONFIG_NET_DSA)
 	struct dsa_switch_tree	*dsa_ptr;	/* dsa specific data */
@@ -1295,9 +1266,6 @@ struct net_device {
 	/* GARP */
 	struct garp_port __rcu	*garp_port;
 
-	struct of_port __rcu	*of_port; /* OpenFlow port */
-	struct m_port		*mesh_port;
-
 	/* class/net/name entry */
 	struct device		dev;
 	/* space for optional device, statistics, and wireless sysfs groups */
@@ -1309,10 +1277,6 @@ struct net_device {
 	/* for setting kernel sock attribute on TCP connection setup */
 #define GSO_MAX_SIZE		65536
 	unsigned int		gso_max_size;
-
-	unsigned		devid;
-	struct fp_dev fp;
-	unsigned long list_bitmap[256 / BITS_PER_LONG];
 
 #ifdef CONFIG_DCB
 	/* Data Center Bridging netlink ops */
@@ -1570,7 +1534,6 @@ struct packet_type {
 #define NETDEV_RELEASE		0x0012
 #define NETDEV_NOTIFY_PEERS	0x0013
 #define NETDEV_JOIN		0x0014
-#define NETDEV_CHANGEL2MTU      0x0015
 
 extern int register_netdevice_notifier(struct notifier_block *nb);
 extern int unregister_netdevice_notifier(struct notifier_block *nb);
@@ -1646,7 +1609,6 @@ extern int		dev_alloc_name(struct net_device *dev, const char *name);
 extern int		dev_open(struct net_device *dev);
 extern int		dev_close(struct net_device *dev);
 extern void		dev_disable_lro(struct net_device *dev);
-extern struct netdev_queue *dev_pick_tx(struct net_device *dev, struct sk_buff *skb);
 extern int		dev_queue_xmit(struct sk_buff *skb);
 extern int		register_netdevice(struct net_device *dev);
 extern void		unregister_netdevice_queue(struct net_device *dev,
@@ -2589,7 +2551,6 @@ extern void		netdev_state_change(struct net_device *dev);
 extern int		netdev_bonding_change(struct net_device *dev,
 					      unsigned long event);
 extern void		netdev_features_change(struct net_device *dev);
-extern void		netdev_l2mtu_change(struct net_device *dev);
 /* Load a device via the kmod */
 extern void		dev_load(struct net *net, const char *name);
 extern void		dev_mcast_init(void);
@@ -2646,12 +2607,7 @@ void netdev_change_features(struct net_device *dev);
 void netif_stacked_transfer_operstate(const struct net_device *rootdev,
 					struct net_device *dev);
 
-netdev_features_t netif_skb_dev_features(struct sk_buff *skb,
-					 const struct net_device *dev);
-static inline netdev_features_t netif_skb_features(struct sk_buff *skb)
-{
-	return netif_skb_dev_features(skb, skb->dev);
-}
+netdev_features_t netif_skb_features(struct sk_buff *skb);
 
 static inline int net_gso_ok(netdev_features_t features, int gso_type)
 {
@@ -2823,32 +2779,6 @@ do {								\
 	0;							\
 })
 #endif
-
-extern void (*ipv4_routing_changed)(void);
-extern void (*fp_ptype_all_changed)(int);
-extern void (*fp_nf_changed)(int, int pf);
-extern void (*fp_xfrm_changed)(int);
-
-DECLARE_PER_CPU(unsigned, per_cpu_netif_receive_depth);
-#ifdef __tile__
-#define MAX_NETIF_RECEIVE_DEPTH 5
-#else
-#define MAX_NETIF_RECEIVE_DEPTH 1
-#endif
-
-static inline int netif_receive_any(struct sk_buff *skb) {
-    unsigned *netif_receive_depth = &__get_cpu_var(per_cpu_netif_receive_depth);
-    int ret;
-    if (*netif_receive_depth < MAX_NETIF_RECEIVE_DEPTH) {
-	*netif_receive_depth += 1;
-	ret = netif_receive_skb(skb);
-	*netif_receive_depth -= 1;
-	return ret;
-    }
-    else {
-	return netif_rx(skb);
-    }
-}
 
 #endif /* __KERNEL__ */
 

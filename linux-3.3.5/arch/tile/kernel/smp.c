@@ -122,7 +122,7 @@ static void smp_stop_cpu_interrupt(void)
 	set_cpu_online(smp_processor_id(), 0);
 	arch_local_irq_disable_all();
 	for (;;)
-		asm("nap; nop");
+		asm("nap");
 }
 
 /* This function calls the 'stop' function on all other CPUs in the system. */
@@ -132,12 +132,6 @@ void smp_send_stop(void)
 	send_IPI_allbutself(MSG_TAG_STOP_CPU);
 }
 
-/* On panic, just wait; we may get an smp_send_stop() later on. */
-void panic_smp_self_stop(void)
-{
-	while (1)
-		asm("nap; nop");
-}
 
 /*
  * Dispatch code called from hv_message_intr() for HV_MSG_TILE hv messages.
@@ -222,7 +216,7 @@ void __init ipi_init(void)
 		if (hv_get_ipi_pte(tile, KERNEL_PL, &pte) != 0)
 			panic("Failed to initialize IPI for cpu %d\n", cpu);
 
-		offset = PFN_PHYS(pte_pfn(pte));
+		offset = hv_pte_get_pfn(pte) << PAGE_SHIFT;
 		ipi_mappings[cpu] = ioremap_prot(offset, PAGE_SIZE, pte);
 	}
 #endif

@@ -78,9 +78,6 @@ FILE *prepare_output(const char *dirname)
 			return NULL;
 		}
 	}
-	else {
-            closedir(dir);
-        }
 
 	len = strlen(dirname) + 30;
 	filename = malloc(sizeof(char) * len);

@@ -22,7 +22,6 @@
 #include <linux/slab.h>
 #include <linux/spi/spi.h>
 #include <linux/module.h>
-#include <linux/of.h>
 
 #include "spi-dw.h"
 
@@ -39,7 +38,7 @@ static int __devinit spi_pci_probe(struct pci_dev *pdev,
 	struct dw_spi_pci *dwpci;
 	struct dw_spi *dws;
 	int pci_bar = 0;
-	int ret, num_cs, bus_num;
+	int ret;
 
 	printk(KERN_INFO "DW: found PCI SPI controller(ID: %04x:%04x)\n",
 		pdev->vendor, pdev->device);
@@ -72,19 +71,9 @@ static int __devinit spi_pci_probe(struct pci_dev *pdev,
 		goto err_release_reg;
 	}
 
-	ret = of_property_read_u32(pdev->dev.of_node, "bus-num", &bus_num);
-	if (ret < 0)
-	dws->bus_num = 0;
-	else
-		dws->bus_num = bus_num;
-
-	ret = of_property_read_u32(pdev->dev.of_node, "num-chipselect", &num_cs);
-	if (ret < 0)
-	dws->num_cs = 4;
-	else
-		dws->num_cs = num_cs;
-
 	dws->parent_dev = &pdev->dev;
+	dws->bus_num = 0;
+	dws->num_cs = 4;
 	dws->irq = pdev->irq;
 
 	/*
@@ -166,12 +155,6 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 	{},
 };
 
-static struct of_device_id dw_spi_pci_of_match[] = {
-		{ .compatible = "snps,dw-spi-pci", },
-		{ /* sentinel */}
-};
-MODULE_DEVICE_TABLE(of, dw_spi_pci_of_match);
-
 static struct pci_driver dw_spi_driver = {
 	.name =		DRIVER_NAME,
 	.id_table =	pci_ids,
@@ -179,11 +162,6 @@ static struct pci_driver dw_spi_driver = {
 	.remove =	__devexit_p(spi_pci_remove),
 	.suspend =	spi_suspend,
 	.resume	=	spi_resume,
-	.driver		= {
-		.name	= DRIVER_NAME,
-		.owner	= THIS_MODULE,
-		.of_match_table = dw_spi_pci_of_match,
-	},
 };
 
 static int __init mrst_spi_init(void)

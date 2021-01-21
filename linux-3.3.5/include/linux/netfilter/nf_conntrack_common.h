@@ -83,9 +83,6 @@ enum ip_conntrack_status {
 	/* Conntrack is a fake untracked entry */
 	IPS_UNTRACKED_BIT = 12,
 	IPS_UNTRACKED = (1 << IPS_UNTRACKED_BIT),
-
-	IPS_FASTPATH_BIT = 30,
-	IPS_FASTPATH = (1 << IPS_FASTPATH_BIT),
 };
 
 /* Connection tracking event types */
@@ -100,7 +97,6 @@ enum ip_conntrack_events {
 	IPCT_MARK,		/* new mark has been set */
 	IPCT_NATSEQADJ,		/* NAT is doing sequence adjustment */
 	IPCT_SECMARK,		/* new security mark has been set */
-	IPCT_P2P,
 };
 
 enum ip_conntrack_expect_events {

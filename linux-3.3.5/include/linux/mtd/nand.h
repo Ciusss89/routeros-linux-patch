@@ -92,7 +92,6 @@ extern int nand_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len);
 #define NAND_CMD_READID		0x90
 #define NAND_CMD_ERASE2		0xd0
 #define NAND_CMD_PARAM		0xec
-#define NAND_CMD_ONFI_READUID	0xed
 #define NAND_CMD_RESET		0xff
 
 #define NAND_CMD_LOCK		0x2a
@@ -521,9 +520,6 @@ struct nand_chip {
 	uint8_t cellinfo;
 	int badblockpos;
 	int badblockbits;
-#ifdef MIPSEL
-	unsigned	backup_offset;
-#endif
 
 	int onfi_version;
 	struct nand_onfi_params	onfi_params;
@@ -547,14 +543,6 @@ struct nand_chip {
 	void *priv;
 };
 
-#define BACKUP_4xFF_OFFSET	36
-#define ALWAYS_4x00_OFFSET	32
-#define ECC_ID_OFFSET		01
-/* ECC_ID_OFFSET contains:
- *	0x00 => mlc ecc (>= 4bit/512 bytes),
- *	0xff => slc ecc (>= 1bit/256 bytes)
- */
-
 /*
  * NAND Flash Manufacturer ID Codes
  */
@@ -568,7 +556,6 @@ struct nand_chip {
 #define NAND_MFR_MICRON		0x2c
 #define NAND_MFR_AMD		0x01
 #define NAND_MFR_MACRONIX	0xc2
-#define NAND_MFR_WINBOND	0xef
 
 /**
  * struct nand_flash_dev - NAND Flash Device ID Structure

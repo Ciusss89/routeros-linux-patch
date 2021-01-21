@@ -70,7 +70,6 @@ EXPORT_SYMBOL(perf_irq);
  */
 
 unsigned int mips_hpt_frequency;
-EXPORT_SYMBOL(mips_hpt_frequency);
 
 /*
  * This function exists in order to cause an error due to a duplicate

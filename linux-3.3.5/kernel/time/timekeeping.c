@@ -169,6 +169,15 @@ static struct timespec raw_time;
 /* flag for if timekeeping is suspended */
 int __read_mostly timekeeping_suspended;
 
+/* must hold xtime_lock */
+void timekeeping_leap_insert(int leapsecond)
+{
+	xtime.tv_sec += leapsecond;
+	wall_to_monotonic.tv_sec -= leapsecond;
+	update_vsyscall(&xtime, &wall_to_monotonic, timekeeper.clock,
+			timekeeper.mult);
+}
+
 /**
  * timekeeping_forward_now - update clock to the current time
  *
@@ -600,6 +609,8 @@ static struct timespec timekeeping_suspend_time;
 static void __timekeeping_inject_sleeptime(struct timespec *delta)
 {
 	if (!timespec_valid(delta)) {
+		printk(KERN_WARNING "__timekeeping_inject_sleeptime: Invalid "
+					"sleep delta value!\n");
 		return;
 	}
 
@@ -931,11 +942,9 @@ static cycle_t logarithmic_accumulation(cycle_t offset, int shift)
 
 	timekeeper.xtime_nsec += timekeeper.xtime_interval << shift;
 	while (timekeeper.xtime_nsec >= nsecps) {
-		int leap;
 		timekeeper.xtime_nsec -= nsecps;
 		xtime.tv_sec++;
-		leap = second_overflow(xtime.tv_sec);
-		xtime.tv_sec += leap;
+		second_overflow();
 	}
 
 	/* Accumulate raw time */
@@ -1041,12 +1050,9 @@ static void update_wall_time(void)
 	 * xtime.tv_nsec isn't larger then NSEC_PER_SEC
 	 */
 	if (unlikely(xtime.tv_nsec >= NSEC_PER_SEC)) {
-		int leap;
 		xtime.tv_nsec -= NSEC_PER_SEC;
 		xtime.tv_sec++;
-		leap = second_overflow(xtime.tv_sec);
-		xtime.tv_sec += leap;
-
+		second_overflow();
 	}
 
 	/* check to see if there is a new clocksource to use */

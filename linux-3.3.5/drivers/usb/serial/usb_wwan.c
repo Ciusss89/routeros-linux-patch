@@ -1,17 +1,17 @@
 /*
   USB Driver layer for GSM modems
 
-  Copyright (C) 2005  Matthias Urlichs <smurf@...>
+  Copyright (C) 2005  Matthias Urlichs <smurf@smurf.noris.de>
 
   This driver is free software; you can redistribute it and/or modify
   it under the terms of Version 2 of the GNU General Public License as
   published by the Free Software Foundation.
 
-  Portions copied from the Keyspan driver by Hugh Blemings <hugh@...>
+  Portions copied from the Keyspan driver by Hugh Blemings <hugh@blemings.org>
 
   History: see the git log.
 
-  Work sponsored by: Sigos GmbH, Germany <info@...>
+  Work sponsored by: Sigos GmbH, Germany <info@sigos.de>
 
   This driver exists because the "normal" serial driver doesn't work too well
   with GSM modems. Issues:
@@ -20,12 +20,13 @@
 */
 
 #define DRIVER_VERSION "v0.7.2"
-#define DRIVER_AUTHOR "Matthias Urlichs <smurf@...>"
+#define DRIVER_AUTHOR "Matthias Urlichs <smurf@smurf.noris.de>"
 #define DRIVER_DESC "USB Driver for GSM modems"
 
 #include <linux/kernel.h>
 #include <linux/jiffies.h>
 #include <linux/errno.h>
+#include <linux/slab.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 #include <linux/module.h>
@@ -33,7 +34,6 @@
 #include <linux/uaccess.h>
 #include <linux/usb.h>
 #include <linux/usb/serial.h>
-#include <linux/slab.h>
 #include <linux/serial.h>
 #include "usb-wwan.h"
 

@@ -15,10 +15,6 @@
 #include <asm/page.h>
 #include <asm/mmu.h>
 
-#ifdef CONFIG_HOMECACHE
-#include <asm/homecache.h>
-#endif
-
 #ifndef AT_VECTOR_SIZE_ARCH
 #define AT_VECTOR_SIZE_ARCH 0
 #endif
@@ -153,11 +149,6 @@ struct page {
 	 */
 	void *shadow;
 #endif
-
-#if defined(CONFIG_HOMECACHE)
-	/* Where is this page's home cache? */
-	int home;
-#endif /* CONFIG_HOMECACHE */
 }
 /*
  * The struct page can be forced to be double word aligned so that atomic ops
@@ -216,9 +207,6 @@ struct vm_area_struct {
 	struct vm_area_struct *vm_next, *vm_prev;
 
 	pgprot_t vm_page_prot;		/* Access permissions of this VMA. */
-#ifdef CONFIG_HOMECACHE
-	pid_t vm_pid;                   /* If non-zero, pid "owns" this VMA. */
-#endif
 	unsigned long vm_flags;		/* Flags, see mm.h. */
 
 	struct rb_node vm_rb;

@@ -508,7 +508,7 @@ static void rlb_update_client(struct rlb_client_info *client_info)
 		skb->dev = client_info->slave->dev;
 
 		if (client_info->tag) {
-			skb = vlan_put_tag(skb, client_info->vlan_id, ETH_P_8021Q);
+			skb = vlan_put_tag(skb, client_info->vlan_id);
 			if (!skb) {
 				pr_err("%s: Error: failed to insert VLAN tag\n",
 				       client_info->slave->dev->master->name);
@@ -897,7 +897,7 @@ static void alb_send_learning_packets(struct slave *slave, u8 mac_addr[])
 				continue;
 			}
 
-			skb = vlan_put_tag(skb, vlan->vlan_id, ETH_P_8021Q);
+			skb = vlan_put_tag(skb, vlan->vlan_id);
 			if (!skb) {
 				pr_err("%s: Error: failed to insert VLAN tag\n",
 				       bond->dev->name);

@@ -47,8 +47,6 @@ struct va_format {
 	va_list *va;
 };
 
-extern void get_some_log(char *buf, int amount);
-
 /*
  * FW_BUG
  * Add this to a message where you are sure the firmware is buggy or behaves

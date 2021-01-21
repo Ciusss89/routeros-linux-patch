@@ -41,7 +41,6 @@ struct fib_config {
 	u32			fc_flow;
 	u32			fc_nlflags;
 	struct nl_info		fc_nlinfo;
-	u32			fc_mplskey;
  };
 
 struct fib_info;
@@ -59,7 +58,6 @@ struct fib_nh {
 #ifdef CONFIG_IP_ROUTE_CLASSID
 	__u32			nh_tclassid;
 #endif
-	__u32			nh_mplskey;
 	int			nh_oif;
 	__be32			nh_gw;
 	__be32			nh_saddr;

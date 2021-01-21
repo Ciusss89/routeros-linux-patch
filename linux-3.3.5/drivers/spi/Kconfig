@@ -276,18 +276,6 @@ config SPI_PXA2XX
 	  controller. The driver can be configured to use any SSP port and
 	  additional documentation can be found a Documentation/spi/pxa2xx.
 
-config SPI_RB400
-	bool "RB400 SPI master"
-	depends on SPI_MASTER && MIPS_MIKROTIK
-
-config SPI_RB_PPC
-	bool "RB powerpc SPI master"
-	depends on SPI_MASTER && RB1100
-
-config SPI_TILERA
-	bool "Tilera SPI master"
-	depends on SPI_MASTER && TILE_GXIO_GPIO
-
 config SPI_PXA2XX_PCI
 	def_bool SPI_PXA2XX && X86_32 && PCI
 

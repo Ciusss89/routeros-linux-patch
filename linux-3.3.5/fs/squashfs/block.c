@@ -29,7 +29,6 @@
 #include <linux/fs.h>
 #include <linux/vfs.h>
 #include <linux/slab.h>
-#include <linux/swap.h>
 #include <linux/string.h>
 #include <linux/buffer_head.h>
 
@@ -38,76 +37,45 @@
 #include "squashfs.h"
 #include "decompressor.h"
 
-static struct page *page_read(struct super_block *sb, pgoff_t index)
-{
-	struct squashfs_sb_info *msblk = sb->s_fs_info;
-	struct file *file = msblk->file;
-	struct address_space *mapping = file->f_mapping;
-	struct page *page;
-
-	page = find_or_create_page(mapping, index + msblk->offset, GFP_NOFS);
-	if (!page)
-		return NULL;
-
-	if (!PageUptodate(page)) {
-		if (mapping->a_ops->readpage(file, page))
-			goto err;
-		wait_on_page_locked(page);
-		lock_page(page);
-		if (!PageUptodate(page))
-			goto err;
-	}
-	return page;
-
-  err:
-	unlock_page(page);
-	page_cache_release(page);
-	return NULL;
-}
-
 /*
  * Read the metadata block length, this is stored in the first two
  * bytes of the metadata block.
  */
-static struct page *get_block_length(struct super_block *sb,
+static struct buffer_head *get_block_length(struct super_block *sb,
 			u64 *cur_index, int *offset, int *length)
 {
 	struct squashfs_sb_info *msblk = sb->s_fs_info;
-	struct page *pg;
+	struct buffer_head *bh;
 
-	pg = page_read(sb, *cur_index);
-	if (pg == NULL)
+	bh = sb_bread(sb, *cur_index);
+	if (bh == NULL)
 		return NULL;
 
 	if (msblk->devblksize - *offset == 1) {
-		*length = ((unsigned char *) page_address(pg))[*offset];
-
-		unlock_page(pg);
-		page_cache_release(pg);
-
-		pg = page_read(sb, ++(*cur_index));
-		if (pg == NULL)
+		*length = (unsigned char) bh->b_data[*offset];
+		put_bh(bh);
+		bh = sb_bread(sb, ++(*cur_index));
+		if (bh == NULL)
 			return NULL;
-		*length |= ((unsigned char *) page_address(pg))[0] << 8;
+		*length |= (unsigned char) bh->b_data[0] << 8;
 		*offset = 1;
 	} else {
-		*length = ((unsigned char *) page_address(pg))[*offset] |
-			((unsigned char *) page_address(pg))[*offset + 1] << 8;
+		*length = (unsigned char) bh->b_data[*offset] |
+			(unsigned char) bh->b_data[*offset + 1] << 8;
 		*offset += 2;
 
 		if (*offset == msblk->devblksize) {
-			unlock_page(pg);
-			page_cache_release(pg);
-
-			pg = page_read(sb, ++(*cur_index));
-			if (pg == NULL)
+			put_bh(bh);
+			bh = sb_bread(sb, ++(*cur_index));
+			if (bh == NULL)
 				return NULL;
 			*offset = 0;
 		}
 	}
 
-	return pg;
+	return bh;
 }
+
 
 /*
  * Read and decompress a metadata block or datablock.  Length is non-zero
@@ -121,14 +89,14 @@ int squashfs_read_data(struct super_block *sb, void **buffer, u64 index,
 			int length, u64 *next_index, int srclength, int pages)
 {
 	struct squashfs_sb_info *msblk = sb->s_fs_info;
-	struct page **pgs;
+	struct buffer_head **bh;
 	int offset = index & ((1 << msblk->devblksize_log2) - 1);
 	u64 cur_index = index >> msblk->devblksize_log2;
 	int bytes, compressed, b = 0, k = 0, page = 0, avail;
 
-	pgs = kcalloc(((srclength + msblk->devblksize - 1)
-		>> msblk->devblksize_log2) + 1, sizeof(*pgs), GFP_KERNEL);
-	if (pgs == NULL)
+	bh = kcalloc(((srclength + msblk->devblksize - 1)
+		>> msblk->devblksize_log2) + 1, sizeof(*bh), GFP_KERNEL);
+	if (bh == NULL)
 		return -ENOMEM;
 
 	if (length) {
@@ -149,12 +117,12 @@ int squashfs_read_data(struct super_block *sb, void **buffer, u64 index,
 			goto read_failure;
 
 		for (b = 0; bytes < length; b++, cur_index++) {
-		    
-			pgs[b] = page_read(sb, cur_index);
-			if (pgs[b] == NULL)
-				goto read_failure;
+			bh[b] = sb_getblk(sb, cur_index);
+			if (bh[b] == NULL)
+				goto block_release;
 			bytes += msblk->devblksize;
 		}
+		ll_rw_block(READ, b, bh);
 	} else {
 		/*
 		 * Metadata block.
@@ -162,8 +130,8 @@ int squashfs_read_data(struct super_block *sb, void **buffer, u64 index,
 		if ((index + 2) > msblk->bytes_used)
 			goto read_failure;
 
-		pgs[0] = get_block_length(sb, &cur_index, &offset, &length);
-		if (pgs[0] == NULL)
+		bh[0] = get_block_length(sb, &cur_index, &offset, &length);
+		if (bh[0] == NULL)
 			goto read_failure;
 		b = 1;
 
@@ -178,19 +146,19 @@ int squashfs_read_data(struct super_block *sb, void **buffer, u64 index,
 
 		if (length < 0 || length > srclength ||
 					(index + length) > msblk->bytes_used)
-			goto read_failure;
+			goto block_release;
 
 		for (; bytes < length; b++) {
-			pgs[b] = page_read(sb, ++cur_index);
-			if (pgs[b] == NULL)
-				goto read_failure;
+			bh[b] = sb_getblk(sb, ++cur_index);
+			if (bh[b] == NULL)
+				goto block_release;
 			bytes += msblk->devblksize;
 		}
+		ll_rw_block(READ, b - 1, bh + 1);
 	}
 
 	if (compressed) {
-		k = 0;
-		length = squashfs_decompress(msblk, buffer, pgs, b, offset,
+		length = squashfs_decompress(msblk, buffer, bh, b, offset,
 			 length, srclength, pages);
 		if (length < 0)
 			goto read_failure;
@@ -198,7 +166,13 @@ int squashfs_read_data(struct super_block *sb, void **buffer, u64 index,
 		/*
 		 * Block is uncompressed.
 		 */
-		int in, pg_offset = 0;
+		int i, in, pg_offset = 0;
+
+		for (i = 0; i < b; i++) {
+			wait_on_buffer(bh[i]);
+			if (!buffer_uptodate(bh[i]))
+				goto block_release;
+		}
 
 		for (bytes = length; k < b; k++) {
 			in = min(bytes, msblk->devblksize - offset);
@@ -211,27 +185,26 @@ int squashfs_read_data(struct super_block *sb, void **buffer, u64 index,
 				avail = min_t(int, in, PAGE_CACHE_SIZE -
 						pg_offset);
 				memcpy(buffer[page] + pg_offset,
-				       page_address(pgs[k]) + offset, avail);
+						bh[k]->b_data + offset, avail);
 				in -= avail;
 				pg_offset += avail;
 				offset += avail;
 			}
 			offset = 0;
+			put_bh(bh[k]);
 		}
 	}
 
-  end:
-	for (k = 0; k < b; ++k) {
-		unlock_page(pgs[k]);
-		page_cache_release(pgs[k]);
-	}
-
-	kfree(pgs);
+	kfree(bh);
 	return length;
+
+block_release:
+	for (; k < b; k++)
+		put_bh(bh[k]);
 
 read_failure:
 	ERROR("squashfs_read_data failed to read block 0x%llx\n",
 					(unsigned long long) index);
-	length = -EIO;
-	goto end;
+	kfree(bh);
+	return -EIO;
 }

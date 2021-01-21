@@ -17,7 +17,6 @@ enum {
 struct ipt_TTL_info {
 	__u8	mode;
 	__u8	ttl;
-	u_int8_t	passthrough;
 };
 
 

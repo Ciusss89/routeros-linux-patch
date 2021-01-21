@@ -22,7 +22,7 @@ struct ts_config;
 struct ts_state
 {
 	unsigned int		offset;
-	char			cb[40] __attribute__((aligned (sizeof(void *))));
+	char			cb[40];
 };
 
 /**

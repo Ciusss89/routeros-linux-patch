@@ -24,7 +24,6 @@ struct flash_platform_data {
 	unsigned int	nr_parts;
 
 	char		*type;
-	unsigned int	use_4b_cmd;
 
 	/* we'll likely add more ... use JEDEC IDs, etc */
 };

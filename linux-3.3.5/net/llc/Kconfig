@@ -1,5 +1,5 @@
 config LLC
-	tristate "LLC"
+	tristate
 	depends on NET
 
 config LLC2

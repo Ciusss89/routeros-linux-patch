@@ -15,7 +15,8 @@
 #include <linux/types.h>
 #include <linux/string.h>
 #include <linux/module.h>
-#include "string-endian.h"
+
+#undef strchr
 
 char *strchr(const char *s, int c)
 {
@@ -32,9 +33,13 @@ char *strchr(const char *s, int c)
 	 * match neither zero nor goal (we make sure the high bit of each
 	 * byte is 1, and the low 7 bits are all the opposite of the goal
 	 * byte).
+	 *
+	 * Note that this shift count expression works because we know shift
+	 * counts are taken mod 64.
 	 */
-	const uint64_t before_mask = MASK(s_int);
-	uint64_t v = (*p | before_mask) ^ (goal & __insn_v1shrui(before_mask, 1));
+	const uint64_t before_mask = (1ULL << (s_int << 3)) - 1;
+	uint64_t v = (*p | before_mask) ^
+		(goal & __insn_v1shrsi(before_mask, 1));
 
 	uint64_t zero_matches, goal_matches;
 	while (1) {
@@ -50,8 +55,8 @@ char *strchr(const char *s, int c)
 		v = *++p;
 	}
 
-	z = CFZ(zero_matches);
-	g = CFZ(goal_matches);
+	z = __insn_ctz(zero_matches);
+	g = __insn_ctz(goal_matches);
 
 	/* If we found c before '\0' we got a match. Note that if c == '\0'
 	 * then g == z, and we correctly return the address of the '\0'

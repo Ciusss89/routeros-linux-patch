@@ -22,10 +22,6 @@
 #include <linux/cleancache.h>
 #include "internal.h"
 
-#ifdef CONFIG_HOMECACHE
-#include <asm/homecache.h>
-#endif
-
 
 /**
  * do_invalidatepage - invalidate part or all of a page
@@ -257,10 +253,6 @@ void truncate_inode_pages_range(struct address_space *mapping,
 		struct page *page = find_lock_page(mapping, start - 1);
 		if (page) {
 			wait_on_page_writeback(page);
-#ifdef CONFIG_HOMECACHE
-			homecache_make_writable(page,
-						PAGE_CACHE_SHIFT - PAGE_SHIFT);
-#endif
 			truncate_partial_page(page, partial);
 			unlock_page(page);
 			page_cache_release(page);

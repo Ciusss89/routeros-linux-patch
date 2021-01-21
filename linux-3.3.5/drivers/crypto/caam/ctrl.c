@@ -39,7 +39,6 @@ static int caam_remove(struct platform_device *pdev)
 
 	kfree(ctrlpriv->jrdev);
 	kfree(ctrlpriv);
-	dev_set_drvdata(ctrldev, NULL);
 
 	return ret;
 }
@@ -108,12 +107,7 @@ static int caam_probe(struct platform_device *pdev)
 	ring = 0;
 	ctrlpriv->total_jobrs = 0;
 	for_each_compatible_node(np, NULL, "fsl,sec-v4.0-job-ring") {
-		int e = caam_jr_probe(pdev, np, ring);
-                if (e) {
-                    caam_remove(pdev);
-                    return e;
-                }
-
+		caam_jr_probe(pdev, np, ring);
 		ctrlpriv->total_jobrs++;
 		ring++;
 	}

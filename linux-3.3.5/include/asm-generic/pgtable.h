@@ -157,8 +157,9 @@ static inline void pmdp_set_wrprotect(struct mm_struct *mm,
 #endif
 
 #ifndef __HAVE_ARCH_PMDP_SPLITTING_FLUSH
-extern void pmdp_splitting_flush(struct vm_area_struct *vma,
-				 unsigned long address, pmd_t *pmdp);
+extern pmd_t pmdp_splitting_flush(struct vm_area_struct *vma,
+				  unsigned long address,
+				  pmd_t *pmdp);
 #endif
 
 #ifndef __HAVE_ARCH_PTE_SAME

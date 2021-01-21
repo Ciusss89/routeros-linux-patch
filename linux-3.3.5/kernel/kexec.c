@@ -360,11 +360,7 @@ static struct page *kimage_alloc_pages(gfp_t gfp_mask, unsigned int order)
 {
 	struct page *pages;
 
-#ifdef kimage_alloc_pages_arch
-	pages = kimage_alloc_pages_arch(gfp_mask, order);
-#else
 	pages = alloc_pages(gfp_mask, order);
-#endif
 	if (pages) {
 		unsigned int count, i;
 		pages->mapping = NULL;
@@ -729,7 +725,7 @@ static struct page *kimage_alloc_page(struct kimage *image,
 		if (!page)
 			return NULL;
 		/* If the page cannot be used file it away */
-		if (page_to_pfn(page) >=
+		if (page_to_pfn(page) >
 				(KEXEC_SOURCE_MEMORY_LIMIT >> PAGE_SHIFT)) {
 			list_add(&page->lru, &image->unuseable_pages);
 			continue;
