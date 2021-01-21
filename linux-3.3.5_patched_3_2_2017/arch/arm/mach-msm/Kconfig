@@ -1,0 +1,99 @@
+
+choice
+	prompt "Qualcomm MSM SoC Type"
+
+config ARCH_IPQ806X
+	bool "IPQ806X"
+	select MSM_SMP
+	select MSM_BUS_SCALING
+	select ARCH_MSM_KRAIT
+	select HAVE_SCHED_CLOCK
+	select MACH_IPQ806X_RB3011
+	select LEDS_GPIO_REGISTER
+	select HAVE_CLK_PREPARE
+	select SWP_EMULATE
+	select ARM_GIC
+	select CPU_V7
+	select PM
+	select PCI
+	select PCI_MSI
+        select ARCH_SUPPORTS_MSI
+	select MSM_PCIE
+	select MSM_ADM3
+	select MSM_V2_TLMM
+	select MSM_GPIOMUX
+	select MSM_RPM
+	select USB_EHCI_MSM
+	select MSM_SCM if SMP
+	select HAVE_SMP
+	select SMP
+	select QCOM_SCM
+
+endchoice
+
+if ARCH_MSM
+
+menu "Qualcomm MSM Board Type"
+
+config MACH_IPQ806X_RB3011
+	depends on ARCH_IPQ806X
+	bool "IPQ806X RB3011"
+	help
+	  Support for the Mikrotik IPQ806X RB3011 device.
+
+config MSM_PCIE
+	bool "MSM PCIe Controller driver"
+	depends on PCI && PCI_MSI
+	help
+	  Enables the PCIe functionality by configures PCIe core on
+	  MSM chipset and by enabling the ARM PCI framework extension.
+
+config MSM_RPM
+	bool "Resource Power Manager"
+	select MSM_MPM
+
+config MSM_BUS_SCALING
+	bool "Bus scaling driver"
+	default n
+
+config MSM_NUM_PCIE
+	int "Number of PCIe Root Complex"
+	default 0 if !MSM_PCIE
+	default 3 if ARCH_IPQ806X
+	default 1
+	range 0 3
+	help
+	  Max. number of PCIe RCs available in the SoC
+
+config CPU_FREQ_MSM
+        bool
+        depends on CPU_FREQ && ARCH_MSM
+        default y
+	help
+          This enables the CPUFreq driver for Qualcomm CPUs.
+          If in doubt, say Y.
+
+endmenu
+
+config MSM_MPM
+	bool
+
+config MSM_GPIOMUX
+	bool
+
+config MSM_V2_TLMM
+	bool
+
+config MSM_ADM3
+	bool
+
+config MSM_SCM
+	bool
+
+config ARCH_MSM_KRAIT
+	bool
+
+config MSM_SMP
+	bool
+
+endif
