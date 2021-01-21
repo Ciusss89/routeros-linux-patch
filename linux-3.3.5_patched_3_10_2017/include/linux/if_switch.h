@@ -1,0 +1,45 @@
+#ifndef _LINUX_IF_SWITCH_H
+#define _LINUX_IF_SWITCH_H
+
+#include <linux/types.h>
+
+// only 16 ioctls available
+#define SIOCGTYPE	(SIOCDEVPRIVATE + 0)
+#define SIOCGSWITCH	(SIOCDEVPRIVATE + 1)
+#define SIOCSTXBW	(SIOCDEVPRIVATE + 2)
+#define SIOCSRXBW	(SIOCDEVPRIVATE + 3)
+#define SIOCSSWITCHED	(SIOCDEVPRIVATE + 4)
+#define SIOCSMIRROR	(SIOCDEVPRIVATE + 5)
+#define SIOCGREG	(SIOCDEVPRIVATE + 8)
+#define SIOCSREG	(SIOCDEVPRIVATE + 9)
+#define SIOCGPORT	(SIOCDEVPRIVATE + 10)
+#define SIOCGCONFIG	(SIOCDEVPRIVATE + 11)
+#define SIOCSCONFIG	(SIOCDEVPRIVATE + 12)
+#define SIOCBRIDGE 	(SIOCDEVPRIVATE + 14)
+#define SIOCSWICHMAX	(SIOCDEVPRIVATE + 15)
+
+struct switch_params {
+    unsigned data;
+    unsigned data2;
+};
+
+#define SWITCH_ADMTEK		0
+#define SWITCH_ICPLUS175C	1
+
+#define MIRROR_NONE -1u
+#define MIRROR_CPU -2u
+
+#define SWITCH_BR_SET_STP 1
+#define SWITCH_BR_SET_BRIDGE 2
+#define SWITCH_BR_FLUSH 3
+#define SWITCH_BR_ADD_VLAN 4
+#define SWITCH_BR_DEL_VLAN 5
+#define SWITCH_BR_SET_VLAN_OPTS 6
+#define SWITCH_BR_SET_MSTI 7
+
+#define STP_DISABLE 0
+#define STP_BLOCK   1
+#define STP_LEARN   2
+#define STP_FORWARD 3
+
+#endif
